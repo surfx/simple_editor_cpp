@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Simple Editor
+Comment=Leve editor de texto em C++ (Estilo Notepad++)
+Exec=SimpleEditor %F
+Icon=text-x-generic
+Terminal=false
+Categories=Development;TextEditor;Utility;
+MimeType=text/plain;text/x-c++src;text/x-c++hdr;text/x-csrc;text/x-chdr;text/x-python;text/x-shellscript;
+Keywords=Text;Editor;C++;Qt;
