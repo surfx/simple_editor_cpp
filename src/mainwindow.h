@@ -12,6 +12,7 @@
 #include "codeeditor.h"
 #include "sessionmanager.h"
 #include "searchdialog.h"
+#include "themedialog.h"
 
 class MainWindow : public QMainWindow
 {
@@ -41,6 +42,8 @@ private slots:
     void reopenLastTab();
     void newLocalConnection();
     void toggleWordWrap(bool checked);
+    void showThemeDialog();
+    void applyTheme(int index);
 
     // Search and Replace
     void showFindDialog();
@@ -95,9 +98,11 @@ private:
     QAction *findNextAct;
     QAction *findPrevAct;
     QAction *reopenAct;
+    QAction *changeThemeAct;
     QAction *exitAct;
 
     SearchDialog *searchDialog = nullptr;
+    int currentThemeIndex = 0;
 };
 
 #endif // MAINWINDOW_H

@@ -212,6 +212,14 @@ void MainWindow::createActions()
     reopenAct->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_T));
     reopenAct->setShortcutContext(Qt::WindowShortcut);
     connect(reopenAct, &QAction::triggered, this, &MainWindow::reopenLastTab);
+
+    changeThemeAct = new QAction(tr("&Temas..."), this);
+    connect(changeThemeAct, &QAction::triggered, this, &MainWindow::showThemeDialog);
+
+    wordWrapAction = new QAction(QIcon::fromTheme("text-wrap"), tr("Quebra de Linha"), this);
+    wordWrapAction->setCheckable(true);
+    wordWrapAction->setToolTip(tr("Alternar Quebra de Linha"));
+    connect(wordWrapAction, &QAction::toggled, this, &MainWindow::toggleWordWrap);
 }
 
 void MainWindow::createToolBar()
@@ -238,11 +246,7 @@ void MainWindow::createToolBar()
 
     mainToolBar->addSeparator();
 
-    // Word Wrap Toggle (Special case as it's a member)
-    wordWrapAction = new QAction(QIcon::fromTheme("text-wrap"), tr("Quebra de Linha"), this);
-    wordWrapAction->setCheckable(true);
-    wordWrapAction->setToolTip(tr("Alternar Quebra de Linha"));
-    connect(wordWrapAction, &QAction::toggled, this, &MainWindow::toggleWordWrap);
+    // Word Wrap Toggle
     mainToolBar->addAction(wordWrapAction);
 
     mainToolBar->addSeparator();
@@ -268,6 +272,10 @@ void MainWindow::addEditorTab(const QString &filePath, const QString &content, b
     }
 
     CodeEditor *editor = new CodeEditor();
+    
+    // Apply current theme
+    editor->setTheme(ThemeDialog::getAvailableThemes().at(currentThemeIndex));
+
     if (!filePath.isEmpty()) {
         QFile file(filePath);
         if (file.open(QIODevice::ReadOnly | QIODevice::Text)) {
@@ -502,6 +510,37 @@ void MainWindow::createMenus()
     searchMenu->addAction(replaceAct);
     searchMenu->addAction(findNextAct);
     searchMenu->addAction(findPrevAct);
+
+    // View/Themes Menu
+    QMenu *viewMenu = menuBar()->addMenu(tr("&Exibir"));
+    viewMenu->addAction(wordWrapAction);
+    viewMenu->addSeparator();
+    viewMenu->addAction(changeThemeAct);
+}
+
+void MainWindow::showThemeDialog()
+{
+    ThemeDialog *dialog = new ThemeDialog(this);
+    dialog->setSelectedThemeIndex(currentThemeIndex);
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    
+    connect(dialog, &ThemeDialog::themeSelected, this, &MainWindow::applyTheme);
+    
+    dialog->show();
+}
+
+void MainWindow::applyTheme(int index)
+{
+    currentThemeIndex = index;
+    EditorTheme theme = ThemeDialog::getAvailableThemes().at(currentThemeIndex);
+    
+    // Apply to all open editors
+    for (int i = 0; i < tabWidget->count(); ++i) {
+        CodeEditor *editor = qobject_cast<CodeEditor*>(tabWidget->widget(i));
+        if (editor) {
+            editor->setTheme(theme);
+        }
+    }
 }
 
 // Search and Replace Implementation

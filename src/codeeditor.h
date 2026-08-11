@@ -2,6 +2,7 @@
 #define CODEEDITOR_H
 
 #include <Qsci/qsciscintilla.h>
+#include "themedialog.h"
 
 class CodeEditor : public QsciScintilla
 {
@@ -12,6 +13,8 @@ public:
 
     bool isModified() const { return QsciScintilla::isModified(); }
     void setModified(bool m) { QsciScintilla::setModified(m); }
+
+    void setTheme(const EditorTheme &theme);
 
     // Text manipulation
     void duplicateLine();

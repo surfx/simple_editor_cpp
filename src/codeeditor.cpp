@@ -14,12 +14,8 @@ CodeEditor::CodeEditor(QWidget *parent) : QsciScintilla(parent)
     // Basic settings
     setUtf8(true);
     
-    // Theme Colors (Gemini CLI inspired - Tokyo Night)
-    setPaper(QColor("#24283b"));
-    setColor(QColor("#c5c6ca"));
-    setCaretForegroundColor(QColor("#c0caf5"));
-    setSelectionBackgroundColor(QColor("#33467C"));
-    setSelectionForegroundColor(QColor("#c5c6ca"));
+    // Apply Default Theme
+    setTheme(ThemeDialog::getAvailableThemes().first());
     
     // Set Monospace font
     QFont font("Monospace", 10);
@@ -28,17 +24,13 @@ CodeEditor::CodeEditor(QWidget *parent) : QsciScintilla(parent)
 
     // Current line highlight
     setCaretLineVisible(true);
-    setCaretLineBackgroundColor(QColor("#2f334d"));
 
     // Line numbers
     setMarginType(1, QsciScintilla::NumberMargin);
     setMarginWidth(1, "0000");
-    setMarginsBackgroundColor(QColor("#24283b"));
-    setMarginsForegroundColor(QColor("#565f89"));
     
     // Brace matching
-    setMatchedBraceBackgroundColor(QColor("#3b4261"));
-    setMatchedBraceForegroundColor(QColor("#c0caf5"));
+    // (Colors set by setTheme)
 
     // COLUMN MODE (The magic part)
     SendScintilla(QsciScintilla::SCI_SETMULTIPLESELECTION, true);
@@ -56,6 +48,20 @@ CodeEditor::CodeEditor(QWidget *parent) : QsciScintilla(parent)
 
     // Wrap mode off by default
     setWrapMode(QsciScintilla::WrapNone);
+}
+
+void CodeEditor::setTheme(const EditorTheme &theme)
+{
+    setPaper(theme.background);
+    setColor(theme.foreground);
+    setCaretForegroundColor(theme.caret);
+    setSelectionBackgroundColor(theme.selectionBackground);
+    setSelectionForegroundColor(theme.selectionForeground);
+    setCaretLineBackgroundColor(theme.caretLine);
+    setMarginsBackgroundColor(theme.marginsBackground);
+    setMarginsForegroundColor(theme.marginsForeground);
+    setMatchedBraceBackgroundColor(theme.braceBackground);
+    setMatchedBraceForegroundColor(theme.braceForeground);
 }
 
 void CodeEditor::duplicateLine()
