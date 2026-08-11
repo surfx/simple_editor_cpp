@@ -7,6 +7,9 @@
 #include <QCloseEvent>
 #include <QPushButton>
 #include <QToolBar>
+#include <QLabel>
+#include <QVBoxLayout>
+#include <QHBoxLayout>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -16,7 +19,56 @@ MainWindow::MainWindow(QWidget *parent)
     tabWidget->setMovable(true);
     tabWidget->setAttribute(Qt::WA_AcceptDrops, false);
 
-    setCentralWidget(tabWidget);
+    // Create Notification Bar
+    notificationBar = new QWidget(this);
+    notificationBar->setObjectName("notificationBar");
+    // Yellow warning background with a slightly darker bottom border
+    notificationBar->setStyleSheet("QWidget#notificationBar { background-color: #fff3cd; border-bottom: 1px solid #ffeeba; }");
+    notificationBar->setVisible(false);
+
+    notificationLabel = new QLabel(this);
+    // Darker text for contrast on yellow background
+    notificationLabel->setStyleSheet("color: #856404; font-size: 13px;");
+    
+    reloadButton = new QPushButton(tr("Recarregar do Disco"), this);
+    // Style button to look like a clean, clickable action without default gray background
+    reloadButton->setStyleSheet(
+        "QPushButton {"
+        "  background-color: #856404;"
+        "  color: white;"
+        "  border-radius: 3px;"
+        "  padding: 4px 12px;"
+        "  font-weight: bold;"
+        "  font-size: 12px;"
+        "  border: none;"
+        "}"
+        "QPushButton:hover {"
+        "  background-color: #6d5203;"
+        "}"
+        "QPushButton:pressed {"
+        "  background-color: #564102;"
+        "}"
+    );
+    connect(reloadButton, &QPushButton::clicked, this, &MainWindow::reloadCurrentFile);
+
+    QHBoxLayout *notifyLayout = new QHBoxLayout(notificationBar);
+    notifyLayout->setContentsMargins(10, 2, 10, 2);
+    notifyLayout->addWidget(notificationLabel);
+    notifyLayout->addStretch();
+    notifyLayout->addWidget(reloadButton);
+
+    QWidget *centralWidget = new QWidget(this);
+    QVBoxLayout *mainLayout = new QVBoxLayout(centralWidget);
+    mainLayout->setContentsMargins(0, 0, 0, 0);
+    mainLayout->setSpacing(0);
+    mainLayout->addWidget(notificationBar);
+    mainLayout->addWidget(tabWidget);
+
+    setCentralWidget(centralWidget);
+
+    // Setup File Watcher
+    fileWatcher = new QFileSystemWatcher(this);
+    connect(fileWatcher, &QFileSystemWatcher::fileChanged, this, &MainWindow::handleFileChanged);
 
     connect(tabWidget, &QTabWidget::tabCloseRequested, this, &MainWindow::closeTab);
     connect(tabWidget, &QTabWidget::currentChanged, this, &MainWindow::onTabChanged);
@@ -109,7 +161,7 @@ void MainWindow::createActions()
     saveAct = new QAction(QIcon::fromTheme("media-floppy"), tr("&Salvar"), this);
     saveAct->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_S));
     saveAct->setShortcutContext(Qt::WindowShortcut);
-    connect(saveAct, &QAction::triggered, this, &MainWindow::saveFile);
+    connect(saveAct, &QAction::triggered, [this](){ saveFile(true); });
 
     saveAsAct = new QAction(tr("Salvar &Como..."), this);
     saveAsAct->setShortcut(QKeySequence::SaveAs);
@@ -261,10 +313,12 @@ void MainWindow::newFile()
 
 void MainWindow::addEditorTab(const QString &filePath, const QString &content, bool isModified)
 {
+    QString absPath;
     if (!filePath.isEmpty()) {
+        absPath = QFileInfo(filePath).absoluteFilePath();
         for (int i = 0; i < tabWidget->count(); ++i) {
             CodeEditor *editor = qobject_cast<CodeEditor*>(tabWidget->widget(i));
-            if (editor && editor->property("filePath").toString() == filePath) {
+            if (editor && editor->property("filePath").toString() == absPath) {
                 tabWidget->setCurrentIndex(i);
                 return;
             }
@@ -276,29 +330,46 @@ void MainWindow::addEditorTab(const QString &filePath, const QString &content, b
     // Apply current theme
     editor->setTheme(ThemeDialog::getAvailableThemes().at(currentThemeIndex));
 
-    if (!filePath.isEmpty()) {
-        QFile file(filePath);
-        if (file.open(QIODevice::ReadOnly | QIODevice::Text)) {
-            editor->setText(file.readAll());
-            file.close();
+    if (!absPath.isEmpty()) {
+        editor->setProperty("filePath", absPath);
+        // Only read from file if we don't already have unsaved content from session
+        if (content.isEmpty()) {
+            QFile file(absPath);
+            if (file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+                editor->setText(file.readAll());
+                file.close();
+            }
         }
-        editor->setProperty("filePath", filePath);
+
+        // Start watching the file if it exists
+        if (QFile::exists(absPath)) {
+            fileWatcher->addPath(absPath);
+        }
     }
-    
+
     if (!content.isEmpty()) {
         editor->setText(content);
     }
 
     editor->setModified(isModified);
-    
-    QString title = filePath.isEmpty() ? "untitled" : QFileInfo(filePath).fileName();
-    if (isModified) title += "*";
 
+    QString title = absPath.isEmpty() ? "untitled" : QFileInfo(absPath).fileName();
     int index = tabWidget->addTab(editor, title);
-    tabWidget->setTabToolTip(index, filePath);
+
+    // Explicitly update title to ensure asterisk shows if it came from session as modified
+    updateTabTitle(index);
+
+    tabWidget->setTabToolTip(index, absPath);
     tabWidget->setCurrentIndex(index);
 
-    connect(editor, &CodeEditor::modificationChanged, this, &MainWindow::updateTabTitle);
+
+    connect(editor, &CodeEditor::modificationChanged, [this, editor]() {
+        // Find the index of this editor in case it moved
+        int idx = tabWidget->indexOf(editor);
+        if (idx != -1) {
+            updateTabTitle(idx);
+        }
+    });
 }
 
 void MainWindow::openFile()
@@ -309,25 +380,41 @@ void MainWindow::openFile()
     }
 }
 
-bool MainWindow::saveFile()
+bool MainWindow::saveFile(bool forcePathCheck)
 {
     CodeEditor *editor = currentEditor();
     if (!editor) return false;
 
     QString filePath = editor->property("filePath").toString();
-    if (filePath.isEmpty()) {
+    
+    // LOGIC:
+    // 1. If no path, we MUST Save As.
+    // 2. If path exists but file is MISSING from disk AND we are not coming from saveFileAs, we MUST Save As.
+    if (filePath.isEmpty() || (forcePathCheck && !QFile::exists(filePath))) {
         return saveFileAs();
     }
+
+    // Explicitly remove from watcher to avoid race condition during save
+    fileWatcher->removePath(filePath);
 
     QFile file(filePath);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
         QMessageBox::warning(this, tr("Erro"), tr("Não foi possível salvar o arquivo %1").arg(filePath));
+        fileWatcher->addPath(filePath);
         return false;
     }
 
     QTextStream out(&file);
     out << editor->text();
+    file.flush();
     file.close();
+
+    // Re-add to watcher after close
+    fileWatcher->addPath(filePath);
+
+    // Clear external modification flags for this file
+    externallyModifiedFiles.remove(filePath);
+    hideNotification();
 
     editor->setModified(false);
     updateTabTitle();
@@ -339,11 +426,16 @@ bool MainWindow::saveFileAs()
     CodeEditor *editor = currentEditor();
     if (!editor) return false;
 
-    QString filePath = QFileDialog::getSaveFileName(this, tr("Salvar Arquivo Como"));
+    QString oldPath = editor->property("filePath").toString();
+    QString filePath = QFileDialog::getSaveFileName(this, tr("Salvar Arquivo Como"), oldPath);
     if (filePath.isEmpty()) return false;
 
+    if (!oldPath.isEmpty()) {
+        fileWatcher->removePath(oldPath);
+    }
+
     editor->setProperty("filePath", filePath);
-    return saveFile();
+    return saveFile(false); // Pass false to skip existence check for the new path
 }
 
 void MainWindow::closeTab(int index)
@@ -363,7 +455,11 @@ void MainWindow::closeTab(int index)
         
         // Save to closed tabs stack
         TabState state;
-        state.filePath = editor->property("filePath").toString();
+        QString filePath = editor->property("filePath").toString();
+        if (!filePath.isEmpty()) {
+            fileWatcher->removePath(filePath);
+        }
+        state.filePath = filePath;
         state.isModified = editor->isModified();
         state.unsavedContent = editor->text();
         closedTabsStack.push(state);
@@ -383,14 +479,20 @@ void MainWindow::reopenLastTab()
     }
 }
 
-void MainWindow::updateTabTitle()
+void MainWindow::updateTabTitle(int index)
 {
-    int index = tabWidget->currentIndex();
-    CodeEditor *editor = currentEditor();
-    if (index != -1 && editor) {
+    if (index == -1) {
+        index = tabWidget->currentIndex();
+    }
+    
+    if (index == -1) return;
+
+    CodeEditor *editor = qobject_cast<CodeEditor*>(tabWidget->widget(index));
+    if (editor) {
         QString filePath = editor->property("filePath").toString();
         QString title = filePath.isEmpty() ? "untitled" : QFileInfo(filePath).fileName();
-        if (editor->isModified()) {
+        bool isExternallyModified = !filePath.isEmpty() && externallyModifiedFiles.value(filePath, false);
+        if (editor->isModified() || isExternallyModified) {
             title += "*";
         }
         tabWidget->setTabText(index, title);
@@ -405,6 +507,24 @@ void MainWindow::onTabChanged(int index)
             QString filePath = editor->property("filePath").toString();
             setWindowTitle(QString("%1 - Simple C++ Editor").arg(filePath.isEmpty() ? "untitled" : filePath));
             
+            // Check for external modifications
+            if (!filePath.isEmpty() && externallyModifiedFiles.value(filePath, false)) {
+                QString absPath = QFileInfo(filePath).absoluteFilePath();
+                bool exists = QFile::exists(absPath);
+                QString fileName = QFileInfo(absPath).fileName();
+                
+                if (!exists) {
+                    notificationLabel->setText(tr("O arquivo \"%1\" foi removido do disco.").arg(fileName));
+                    reloadButton->setVisible(false);
+                } else {
+                    notificationLabel->setText(tr("O arquivo \"%1\" foi alterado externamente.").arg(fileName));
+                    reloadButton->setVisible(true);
+                }
+                notificationBar->setVisible(true);
+            } else {
+                notificationBar->setVisible(false);
+            }
+
             // Sync Word Wrap toggle state
             wordWrapAction->blockSignals(true);
             wordWrapAction->setChecked(editor->wrapMode() != QsciScintilla::WrapNone);
@@ -439,8 +559,14 @@ void MainWindow::saveSession()
         CodeEditor *editor = qobject_cast<CodeEditor*>(tabWidget->widget(i));
         if (editor) {
             TabState state;
-            state.filePath = editor->property("filePath").toString();
-            state.isModified = editor->isModified();
+            QString filePath = editor->property("filePath").toString();
+            state.filePath = filePath;
+            
+            bool isExternallyModified = !filePath.isEmpty() && externallyModifiedFiles.value(filePath, false);
+            state.isModified = editor->isModified() || isExternallyModified;
+            
+            // Save content if it's modified OR if the file was deleted/changed externally
+            // so we can restore it exactly as it was.
             if (state.isModified) {
                 state.unsavedContent = editor->text();
             }
@@ -541,6 +667,85 @@ void MainWindow::applyTheme(int index)
             editor->setTheme(theme);
         }
     }
+}
+
+void MainWindow::handleFileChanged(const QString &path)
+{
+    QString absChangedPath = QFileInfo(path).absoluteFilePath();
+    
+    // Find the tab for this path
+    CodeEditor *targetEditor = nullptr;
+    int tabIndex = -1;
+    for (int i = 0; i < tabWidget->count(); ++i) {
+        CodeEditor *editor = qobject_cast<CodeEditor*>(tabWidget->widget(i));
+        if (editor) {
+            QString editorPath = editor->property("filePath").toString();
+            if (!editorPath.isEmpty() && QFileInfo(editorPath).absoluteFilePath() == absChangedPath) {
+                targetEditor = editor;
+                tabIndex = i;
+                break;
+            }
+        }
+    }
+
+    if (!targetEditor) return;
+
+    bool exists = QFile::exists(absChangedPath);
+    // Mark as externally modified to ensure notification shows up in onTabChanged too
+    externallyModifiedFiles[absChangedPath] = true;
+
+    if (!exists) {
+        // File deleted externally
+        targetEditor->setModified(true);
+        updateTabTitle(tabIndex);
+    } else {
+        // File modified externally
+        updateTabTitle(tabIndex);
+    }
+
+    // Show notification if it's the current tab
+    if (tabWidget->currentIndex() == tabIndex) {
+        QString fileName = QFileInfo(absChangedPath).fileName();
+        if (!exists) {
+            notificationLabel->setText(tr("O arquivo \"%1\" foi removido do disco.").arg(fileName));
+            reloadButton->setVisible(false);
+        } else {
+            notificationLabel->setText(tr("O arquivo \"%1\" foi alterado externamente.").arg(fileName));
+            reloadButton->setVisible(true);
+        }
+        notificationBar->setVisible(true);
+    }
+
+    // Re-add to watcher if needed (some systems remove it on change/delete)
+    if (!fileWatcher->files().contains(absChangedPath) && exists) {
+        fileWatcher->addPath(absChangedPath);
+    }
+}
+
+void MainWindow::reloadCurrentFile()
+{
+    CodeEditor *editor = currentEditor();
+    if (!editor) return;
+
+    QString path = editor->property("filePath").toString();
+    if (path.isEmpty()) return;
+
+    QFile file(path);
+    if (file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        editor->setText(file.readAll());
+        file.close();
+        editor->setModified(false);
+        externallyModifiedFiles.remove(path);
+        hideNotification();
+        updateTabTitle();
+    } else {
+        QMessageBox::warning(this, tr("Erro"), tr("Não foi possível recarregar o arquivo \"%1\".").arg(path));
+    }
+}
+
+void MainWindow::hideNotification()
+{
+    notificationBar->setVisible(false);
 }
 
 // Search and Replace Implementation

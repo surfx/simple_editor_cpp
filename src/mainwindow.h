@@ -7,6 +7,7 @@
 #include <QDragEnterEvent>
 #include <QDropEvent>
 #include <QStack>
+#include <QFileSystemWatcher>
 #include <QtNetwork/QLocalServer>
 #include <QtNetwork/QLocalSocket>
 #include "codeeditor.h"
@@ -34,16 +35,19 @@ protected:
 private slots:
     void newFile();
     void openFile();
-    bool saveFile();
+    bool saveFile(bool forcePathCheck = true);
     bool saveFileAs();
     void closeTab(int index);
-    void updateTabTitle();
+    void updateTabTitle(int index = -1);
     void onTabChanged(int index);
     void reopenLastTab();
     void newLocalConnection();
     void toggleWordWrap(bool checked);
     void showThemeDialog();
     void applyTheme(int index);
+    void handleFileChanged(const QString &path);
+    void reloadCurrentFile();
+    void hideNotification();
 
     // Search and Replace
     void showFindDialog();
@@ -74,6 +78,7 @@ private:
     QStack<TabState> closedTabsStack;
     QLocalServer *localServer;
     QAction *wordWrapAction;
+    QFileSystemWatcher *fileWatcher;
     
     // Shared Actions
     QAction *newAct;
@@ -103,6 +108,12 @@ private:
 
     SearchDialog *searchDialog = nullptr;
     int currentThemeIndex = 0;
+
+    // Notification Bar
+    QWidget *notificationBar;
+    QLabel *notificationLabel;
+    QPushButton *reloadButton;
+    QMap<QString, bool> externallyModifiedFiles;
 };
 
 #endif // MAINWINDOW_H
