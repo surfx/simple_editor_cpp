@@ -11,6 +11,7 @@
 #include <QtNetwork/QLocalSocket>
 #include "codeeditor.h"
 #include "sessionmanager.h"
+#include "searchdialog.h"
 
 class MainWindow : public QMainWindow
 {
@@ -41,9 +42,26 @@ private slots:
     void newLocalConnection();
     void toggleWordWrap(bool checked);
 
+    // Search and Replace
+    void showFindDialog();
+    void showReplaceDialog();
+    void doFindNext();
+    void doFindPrevious();
+    void doReplace();
+    void doReplaceAll();
+
+    // Text manipulation
+    void duplicateLine();
+    void deleteLine();
+    void moveLineUp();
+    void moveLineDown();
+    void toggleComment();
+    void indentSelection();
+    void unindentSelection();
+
 private:
     void createToolBar();
-    void setupTabs();
+    void createMenus();
     CodeEditor* currentEditor() const;
     void loadSession();
     void saveSession();
@@ -52,6 +70,7 @@ private:
     QStack<TabState> closedTabsStack;
     QLocalServer *localServer;
     QAction *wordWrapAction;
+    SearchDialog *searchDialog = nullptr;
 };
 
 #endif // MAINWINDOW_H
