@@ -14,6 +14,13 @@ CodeEditor::CodeEditor(QWidget *parent) : QsciScintilla(parent)
     // Basic settings
     setUtf8(true);
     
+    // Theme Colors (Gemini CLI inspired - Tokyo Night)
+    setPaper(QColor("#24283b"));
+    setColor(QColor("#c5c6ca"));
+    setCaretForegroundColor(QColor("#c0caf5"));
+    setSelectionBackgroundColor(QColor("#33467C"));
+    setSelectionForegroundColor(QColor("#c5c6ca"));
+    
     // Set Monospace font
     QFont font("Monospace", 10);
     font.setFixedPitch(true);
@@ -21,18 +28,22 @@ CodeEditor::CodeEditor(QWidget *parent) : QsciScintilla(parent)
 
     // Current line highlight
     setCaretLineVisible(true);
-    QColor highlightColor = palette().color(QPalette::Highlight);
-    highlightColor.setAlpha(40);
-    setCaretLineBackgroundColor(highlightColor);
+    setCaretLineBackgroundColor(QColor("#2f334d"));
 
     // Line numbers
     setMarginType(1, QsciScintilla::NumberMargin);
     setMarginWidth(1, "0000");
-    setMarginsBackgroundColor(QColor(Qt::lightGray));
+    setMarginsBackgroundColor(QColor("#24283b"));
+    setMarginsForegroundColor(QColor("#565f89"));
+    
+    // Brace matching
+    setMatchedBraceBackgroundColor(QColor("#3b4261"));
+    setMatchedBraceForegroundColor(QColor("#c0caf5"));
 
     // COLUMN MODE (The magic part)
     SendScintilla(QsciScintilla::SCI_SETMULTIPLESELECTION, true);
     SendScintilla(QsciScintilla::SCI_SETADDITIONALSELECTIONTYPING, true);
+    SendScintilla(QsciScintilla::SCI_SETMULTIPASTE, true);
     SendScintilla(QsciScintilla::SCI_SETVIRTUALSPACEOPTIONS, 1); // SCVS_RECTANGULARSELECTION
     
     // Tab settings
@@ -100,6 +111,68 @@ void CodeEditor::toggleComment()
         }
     }
     endUndoAction();
+}
+
+void CodeEditor::keyPressEvent(QKeyEvent *e)
+{
+    // Handle navigation for multiple selections manually
+    if (e->key() == Qt::Key_Left || e->key() == Qt::Key_Right ||
+        e->key() == Qt::Key_Up   || e->key() == Qt::Key_Down  ||
+        e->key() == Qt::Key_Home || e->key() == Qt::Key_End) 
+    {
+        int selections = SendScintilla(SCI_GETSELECTIONS);
+        if (selections > 1) {
+            bool shift = e->modifiers() & Qt::ShiftModifier;
+            bool ctrl = e->modifiers() & Qt::ControlModifier;
+
+            for (int i = 0; i < selections; ++i) {
+                int caret = SendScintilla(SCI_GETSELECTIONNCARET, i);
+                int anchor = SendScintilla(SCI_GETSELECTIONNANCHOR, i);
+                int newCaret = caret;
+
+                switch (e->key()) {
+                    case Qt::Key_Left:
+                        if (ctrl) newCaret = SendScintilla(SCI_WORDLEFT);
+                        else newCaret = SendScintilla(SCI_POSITIONRELATIVE, caret, -1);
+                        break;
+                    case Qt::Key_Right:
+                        if (ctrl) newCaret = SendScintilla(SCI_WORDRIGHT);
+                        else newCaret = SendScintilla(SCI_POSITIONRELATIVE, caret, 1);
+                        break;
+                    case Qt::Key_Up:
+                        {
+                            int line = SendScintilla(SCI_LINEFROMPOSITION, caret);
+                            int col = SendScintilla(SCI_GETCOLUMN, caret);
+                            if (line > 0) newCaret = SendScintilla(SCI_FINDCOLUMN, line - 1, col);
+                        }
+                        break;
+                    case Qt::Key_Down:
+                        {
+                            int line = SendScintilla(SCI_LINEFROMPOSITION, caret);
+                            int col = SendScintilla(SCI_GETCOLUMN, caret);
+                            int lineCount = SendScintilla(SCI_GETLINECOUNT);
+                            if (line < lineCount - 1) newCaret = SendScintilla(SCI_FINDCOLUMN, line + 1, col);
+                        }
+                        break;
+                    case Qt::Key_Home:
+                        newCaret = SendScintilla(SCI_POSITIONFROMLINE, SendScintilla(SCI_LINEFROMPOSITION, caret));
+                        break;
+                    case Qt::Key_End:
+                        newCaret = SendScintilla(SCI_GETLINEENDPOSITION, SendScintilla(SCI_LINEFROMPOSITION, caret));
+                        break;
+                }
+
+                SendScintilla(SCI_SETSELECTIONNCARET, i, newCaret);
+                if (!shift) {
+                    SendScintilla(SCI_SETSELECTIONNANCHOR, i, newCaret);
+                }
+            }
+            e->accept();
+            return;
+        }
+    }
+
+    QsciScintilla::keyPressEvent(e);
 }
 
 void CodeEditor::contextMenuEvent(QContextMenuEvent *event)

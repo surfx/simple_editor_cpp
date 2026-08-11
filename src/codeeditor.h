@@ -24,6 +24,7 @@ public:
 
 protected:
     void contextMenuEvent(QContextMenuEvent *event) override;
+    void keyPressEvent(QKeyEvent *e) override;
 };
 
 #endif // CODEEDITOR_H
