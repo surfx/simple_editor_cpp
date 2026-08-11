@@ -60,6 +60,7 @@ private slots:
     void unindentSelection();
 
 private:
+    void createActions();
     void createToolBar();
     void createMenus();
     CodeEditor* currentEditor() const;
@@ -70,6 +71,32 @@ private:
     QStack<TabState> closedTabsStack;
     QLocalServer *localServer;
     QAction *wordWrapAction;
+    
+    // Shared Actions
+    QAction *newAct;
+    QAction *openAct;
+    QAction *saveAct;
+    QAction *saveAsAct;
+    QAction *undoAct;
+    QAction *redoAct;
+    QAction *cutAct;
+    QAction *copyAct;
+    QAction *pasteAct;
+    QAction *selectAllAct;
+    QAction *duplicateLineAct;
+    QAction *deleteLineAct;
+    QAction *moveLineUpAct;
+    QAction *moveLineDownAct;
+    QAction *toggleCommentAct;
+    QAction *indentAct;
+    QAction *unindentAct;
+    QAction *findAct;
+    QAction *replaceAct;
+    QAction *findNextAct;
+    QAction *findPrevAct;
+    QAction *reopenAct;
+    QAction *exitAct;
+
     SearchDialog *searchDialog = nullptr;
 };
 

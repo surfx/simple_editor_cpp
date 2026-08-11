@@ -21,6 +21,7 @@ MainWindow::MainWindow(QWidget *parent)
     connect(tabWidget, &QTabWidget::tabCloseRequested, this, &MainWindow::closeTab);
     connect(tabWidget, &QTabWidget::currentChanged, this, &MainWindow::onTabChanged);
 
+    createActions();
     createMenus();
     createToolBar();
     loadSession();
@@ -92,6 +93,127 @@ void MainWindow::dropEvent(QDropEvent *event)
     }
 }
 
+void MainWindow::createActions()
+{
+    // File Actions
+    newAct = new QAction(QIcon::fromTheme("document-new"), tr("&Novo"), this);
+    newAct->setShortcut(QKeySequence::New);
+    newAct->setShortcutContext(Qt::WindowShortcut);
+    connect(newAct, &QAction::triggered, this, &MainWindow::newFile);
+
+    openAct = new QAction(QIcon::fromTheme("folder-open"), tr("&Abrir"), this);
+    openAct->setShortcut(QKeySequence::Open);
+    openAct->setShortcutContext(Qt::WindowShortcut);
+    connect(openAct, &QAction::triggered, this, &MainWindow::openFile);
+
+    saveAct = new QAction(QIcon::fromTheme("media-floppy"), tr("&Salvar"), this);
+    saveAct->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_S));
+    saveAct->setShortcutContext(Qt::WindowShortcut);
+    connect(saveAct, &QAction::triggered, this, &MainWindow::saveFile);
+
+    saveAsAct = new QAction(tr("Salvar &Como..."), this);
+    saveAsAct->setShortcut(QKeySequence::SaveAs);
+    saveAsAct->setShortcutContext(Qt::WindowShortcut);
+    connect(saveAsAct, &QAction::triggered, this, &MainWindow::saveFileAs);
+
+    exitAct = new QAction(QIcon::fromTheme("application-exit"), tr("Sai&r"), this);
+    exitAct->setShortcut(QKeySequence::Quit);
+    exitAct->setShortcutContext(Qt::WindowShortcut);
+    connect(exitAct, &QAction::triggered, this, &MainWindow::close);
+
+    // Edit Actions
+    undoAct = new QAction(QIcon::fromTheme("edit-undo"), tr("&Desfazer"), this);
+    undoAct->setShortcut(QKeySequence::Undo);
+    undoAct->setShortcutContext(Qt::WindowShortcut);
+    connect(undoAct, &QAction::triggered, [this](){ if(currentEditor()) currentEditor()->undo(); });
+
+    redoAct = new QAction(QIcon::fromTheme("edit-redo"), tr("&Refazer"), this);
+    redoAct->setShortcut(QKeySequence::Redo);
+    redoAct->setShortcutContext(Qt::WindowShortcut);
+    connect(redoAct, &QAction::triggered, [this](){ if(currentEditor()) currentEditor()->redo(); });
+
+    cutAct = new QAction(QIcon::fromTheme("edit-cut"), tr("Recor&tar"), this);
+    cutAct->setShortcut(QKeySequence::Cut);
+    cutAct->setShortcutContext(Qt::WindowShortcut);
+    connect(cutAct, &QAction::triggered, [this](){ if(currentEditor()) currentEditor()->cut(); });
+
+    copyAct = new QAction(QIcon::fromTheme("edit-copy"), tr("&Copiar"), this);
+    copyAct->setShortcut(QKeySequence::Copy);
+    copyAct->setShortcutContext(Qt::WindowShortcut);
+    connect(copyAct, &QAction::triggered, [this](){ if(currentEditor()) currentEditor()->copy(); });
+
+    pasteAct = new QAction(QIcon::fromTheme("edit-paste"), tr("Co&lar"), this);
+    pasteAct->setShortcut(QKeySequence::Paste);
+    pasteAct->setShortcutContext(Qt::WindowShortcut);
+    connect(pasteAct, &QAction::triggered, [this](){ if(currentEditor()) currentEditor()->paste(); });
+
+    selectAllAct = new QAction(tr("Selecionar &Tudo"), this);
+    selectAllAct->setShortcut(QKeySequence::SelectAll);
+    selectAllAct->setShortcutContext(Qt::WindowShortcut);
+    connect(selectAllAct, &QAction::triggered, [this](){ if(currentEditor()) currentEditor()->selectAll(); });
+
+    duplicateLineAct = new QAction(tr("&Duplicar Linha"), this);
+    duplicateLineAct->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_D));
+    duplicateLineAct->setShortcutContext(Qt::WindowShortcut);
+    connect(duplicateLineAct, &QAction::triggered, this, &MainWindow::duplicateLine);
+
+    deleteLineAct = new QAction(tr("&Apagar Linha"), this);
+    deleteLineAct->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_L));
+    deleteLineAct->setShortcutContext(Qt::WindowShortcut);
+    connect(deleteLineAct, &QAction::triggered, this, &MainWindow::deleteLine);
+
+    moveLineUpAct = new QAction(tr("Mover Linha para &Cima"), this);
+    moveLineUpAct->setShortcut(QKeySequence(Qt::ALT | Qt::Key_Up));
+    moveLineUpAct->setShortcutContext(Qt::WindowShortcut);
+    connect(moveLineUpAct, &QAction::triggered, this, &MainWindow::moveLineUp);
+
+    moveLineDownAct = new QAction(tr("Mover Linha para &Baixo"), this);
+    moveLineDownAct->setShortcut(QKeySequence(Qt::ALT | Qt::Key_Down));
+    moveLineDownAct->setShortcutContext(Qt::WindowShortcut);
+    connect(moveLineDownAct, &QAction::triggered, this, &MainWindow::moveLineDown);
+
+    toggleCommentAct = new QAction(tr("&Comentar/Descomentar"), this);
+    toggleCommentAct->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_Q));
+    toggleCommentAct->setShortcutContext(Qt::WindowShortcut);
+    connect(toggleCommentAct, &QAction::triggered, this, &MainWindow::toggleComment);
+
+    indentAct = new QAction(tr("Aumentar Recuo"), this);
+    indentAct->setShortcut(QKeySequence(Qt::Key_Tab));
+    indentAct->setShortcutContext(Qt::WindowShortcut);
+    connect(indentAct, &QAction::triggered, this, &MainWindow::indentSelection);
+
+    unindentAct = new QAction(tr("Diminuir Recuo"), this);
+    unindentAct->setShortcut(QKeySequence(Qt::SHIFT | Qt::Key_Tab));
+    unindentAct->setShortcutContext(Qt::WindowShortcut);
+    connect(unindentAct, &QAction::triggered, this, &MainWindow::unindentSelection);
+
+    // Search Actions
+    findAct = new QAction(tr("&Localizar..."), this);
+    findAct->setShortcut(QKeySequence::Find);
+    findAct->setShortcutContext(Qt::WindowShortcut);
+    connect(findAct, &QAction::triggered, this, &MainWindow::showFindDialog);
+
+    replaceAct = new QAction(tr("&Substituir..."), this);
+    replaceAct->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_H));
+    replaceAct->setShortcutContext(Qt::WindowShortcut);
+    connect(replaceAct, &QAction::triggered, this, &MainWindow::showReplaceDialog);
+
+    findNextAct = new QAction(tr("Localizar &Próximo"), this);
+    findNextAct->setShortcut(QKeySequence(Qt::Key_F3));
+    findNextAct->setShortcutContext(Qt::WindowShortcut);
+    connect(findNextAct, &QAction::triggered, this, &MainWindow::doFindNext);
+
+    findPrevAct = new QAction(tr("Localizar &Anterior"), this);
+    findPrevAct->setShortcut(QKeySequence(Qt::SHIFT | Qt::Key_F3));
+    findPrevAct->setShortcutContext(Qt::WindowShortcut);
+    connect(findPrevAct, &QAction::triggered, this, &MainWindow::doFindPrevious);
+
+    reopenAct = new QAction(tr("Reabrir Aba Fechada"), this);
+    reopenAct->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_T));
+    reopenAct->setShortcutContext(Qt::WindowShortcut);
+    connect(reopenAct, &QAction::triggered, this, &MainWindow::reopenLastTab);
+}
+
 void MainWindow::createToolBar()
 {
     QToolBar *mainToolBar = addToolBar(tr("Principal"));
@@ -99,65 +221,24 @@ void MainWindow::createToolBar()
     mainToolBar->setFloatable(false);
     mainToolBar->setIconSize(QSize(24, 24));
 
-    // New Tab
-    QAction *newAct = new QAction(QIcon::fromTheme("document-new"), tr("Nova Aba"), this);
-    newAct->setShortcut(QKeySequence::New);
-    newAct->setToolTip(tr("Nova Aba (Ctrl+N)"));
-    connect(newAct, &QAction::triggered, this, &MainWindow::newFile);
     mainToolBar->addAction(newAct);
-
-    // Open
-    QAction *openAct = new QAction(QIcon::fromTheme("folder-open"), tr("Abrir"), this);
-    openAct->setShortcut(QKeySequence::Open);
-    openAct->setToolTip(tr("Abrir Arquivo (Ctrl+O)"));
-    connect(openAct, &QAction::triggered, this, &MainWindow::openFile);
     mainToolBar->addAction(openAct);
-
-    // Save
-    QAction *saveAct = new QAction(QIcon::fromTheme("media-floppy"), tr("Salvar"), this);
-    saveAct->setShortcut(QKeySequence::Save);
-    saveAct->setToolTip(tr("Salvar (Ctrl+S)"));
-    connect(saveAct, &QAction::triggered, this, &MainWindow::saveFile);
     mainToolBar->addAction(saveAct);
 
     mainToolBar->addSeparator();
 
-    // Standard Edit Actions in Toolbar
-    QAction *undoAct = new QAction(QIcon::fromTheme("edit-undo"), tr("Desfazer"), this);
-    undoAct->setShortcut(QKeySequence::Undo);
-    undoAct->setToolTip(tr("Desfazer (Ctrl+Z)"));
-    connect(undoAct, &QAction::triggered, [this](){ if(currentEditor()) currentEditor()->undo(); });
     mainToolBar->addAction(undoAct);
-
-    QAction *redoAct = new QAction(QIcon::fromTheme("edit-redo"), tr("Refazer"), this);
-    redoAct->setShortcut(QKeySequence::Redo);
-    redoAct->setToolTip(tr("Refazer (Ctrl+Y)"));
-    connect(redoAct, &QAction::triggered, [this](){ if(currentEditor()) currentEditor()->redo(); });
     mainToolBar->addAction(redoAct);
 
     mainToolBar->addSeparator();
 
-    QAction *cutAct = new QAction(QIcon::fromTheme("edit-cut"), tr("Recortar"), this);
-    cutAct->setShortcut(QKeySequence::Cut);
-    cutAct->setToolTip(tr("Recortar (Ctrl+X)"));
-    connect(cutAct, &QAction::triggered, [this](){ if(currentEditor()) currentEditor()->cut(); });
     mainToolBar->addAction(cutAct);
-
-    QAction *copyAct = new QAction(QIcon::fromTheme("edit-copy"), tr("Copiar"), this);
-    copyAct->setShortcut(QKeySequence::Copy);
-    copyAct->setToolTip(tr("Copiar (Ctrl+C)"));
-    connect(copyAct, &QAction::triggered, [this](){ if(currentEditor()) currentEditor()->copy(); });
     mainToolBar->addAction(copyAct);
-
-    QAction *pasteAct = new QAction(QIcon::fromTheme("edit-paste"), tr("Colar"), this);
-    pasteAct->setShortcut(QKeySequence::Paste);
-    pasteAct->setToolTip(tr("Colar (Ctrl+V)"));
-    connect(pasteAct, &QAction::triggered, [this](){ if(currentEditor()) currentEditor()->paste(); });
     mainToolBar->addAction(pasteAct);
 
     mainToolBar->addSeparator();
 
-    // Word Wrap Toggle
+    // Word Wrap Toggle (Special case as it's a member)
     wordWrapAction = new QAction(QIcon::fromTheme("text-wrap"), tr("Quebra de Linha"), this);
     wordWrapAction->setCheckable(true);
     wordWrapAction->setToolTip(tr("Alternar Quebra de Linha"));
@@ -166,11 +247,6 @@ void MainWindow::createToolBar()
 
     mainToolBar->addSeparator();
 
-    // Sair
-    QAction *exitAct = new QAction(QIcon::fromTheme("application-exit"), tr("Sair"), this);
-    exitAct->setShortcut(QKeySequence::Quit);
-    exitAct->setToolTip(tr("Sair (Ctrl+Q)"));
-    connect(exitAct, &QAction::triggered, this, &MainWindow::close);
     mainToolBar->addAction(exitAct);
 }
 
@@ -384,51 +460,48 @@ void MainWindow::createMenus()
 {
     // File Menu
     QMenu *fileMenu = menuBar()->addMenu(tr("&Arquivo"));
-    
-    fileMenu->addAction(QIcon::fromTheme("document-new"), tr("&Novo"), QKeySequence::New, this, &MainWindow::newFile);
-    fileMenu->addAction(QIcon::fromTheme("folder-open"), tr("&Abrir"), QKeySequence::Open, this, &MainWindow::openFile);
-    fileMenu->addAction(QIcon::fromTheme("media-floppy"), tr("&Salvar"), QKeySequence::Save, this, &MainWindow::saveFile);
-    fileMenu->addAction(tr("Salvar &Como..."), QKeySequence::SaveAs, this, &MainWindow::saveFileAs);
+    fileMenu->addAction(newAct);
+    fileMenu->addAction(openAct);
+    fileMenu->addAction(saveAct);
+    fileMenu->addAction(saveAsAct);
     
     // Add reopen last tab to menu
     fileMenu->addSeparator();
-    fileMenu->addAction(tr("Reabrir Aba Fechada"), QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_T), this, &MainWindow::reopenLastTab);
+    fileMenu->addAction(reopenAct);
     
     fileMenu->addSeparator();
-    fileMenu->addAction(QIcon::fromTheme("application-exit"), tr("Sai&r"), QKeySequence::Quit, this, &MainWindow::close);
+    fileMenu->addAction(exitAct);
 
     // Edit Menu
     QMenu *editMenu = menuBar()->addMenu(tr("&Editar"));
-    
-    editMenu->addAction(QIcon::fromTheme("edit-undo"), tr("&Desfazer"), QKeySequence::Undo, [this](){ if(currentEditor()) currentEditor()->undo(); });
-    editMenu->addAction(QIcon::fromTheme("edit-redo"), tr("&Refazer"), QKeySequence::Redo, [this](){ if(currentEditor()) currentEditor()->redo(); });
+    editMenu->addAction(undoAct);
+    editMenu->addAction(redoAct);
     editMenu->addSeparator();
-    editMenu->addAction(QIcon::fromTheme("edit-cut"), tr("Recor&tar"), QKeySequence::Cut, [this](){ if(currentEditor()) currentEditor()->cut(); });
-    editMenu->addAction(QIcon::fromTheme("edit-copy"), tr("&Copiar"), QKeySequence::Copy, [this](){ if(currentEditor()) currentEditor()->copy(); });
-    editMenu->addAction(QIcon::fromTheme("edit-paste"), tr("Co&lar"), QKeySequence::Paste, [this](){ if(currentEditor()) currentEditor()->paste(); });
+    editMenu->addAction(cutAct);
+    editMenu->addAction(copyAct);
+    editMenu->addAction(pasteAct);
     editMenu->addSeparator();
-    editMenu->addAction(tr("Selecionar &Tudo"), QKeySequence::SelectAll, [this](){ if(currentEditor()) currentEditor()->selectAll(); });
-    editMenu->addSeparator();
-    
-    editMenu->addAction(tr("&Duplicar Linha"), QKeySequence(Qt::CTRL | Qt::Key_D), this, &MainWindow::duplicateLine);
-    editMenu->addAction(tr("&Apagar Linha"), QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_L), this, &MainWindow::deleteLine);
-    editMenu->addSeparator();
-    editMenu->addAction(tr("Mover Linha para &Cima"), QKeySequence(Qt::ALT | Qt::Key_Up), this, &MainWindow::moveLineUp);
-    editMenu->addAction(tr("Mover Linha para &Baixo"), QKeySequence(Qt::ALT | Qt::Key_Down), this, &MainWindow::moveLineDown);
-    editMenu->addSeparator();
-    editMenu->addAction(tr("&Comentar/Descomentar"), QKeySequence(Qt::CTRL | Qt::Key_Q), this, &MainWindow::toggleComment);
+    editMenu->addAction(selectAllAct);
     editMenu->addSeparator();
     
-    // Shortcuts for Indent/Dedent
-    editMenu->addAction(tr("Aumentar Recuo"), QKeySequence(Qt::Key_Tab), this, &MainWindow::indentSelection);
-    editMenu->addAction(tr("Diminuir Recuo"), QKeySequence(Qt::SHIFT | Qt::Key_Tab), this, &MainWindow::unindentSelection);
+    editMenu->addAction(duplicateLineAct);
+    editMenu->addAction(deleteLineAct);
+    editMenu->addSeparator();
+    editMenu->addAction(moveLineUpAct);
+    editMenu->addAction(moveLineDownAct);
+    editMenu->addSeparator();
+    editMenu->addAction(toggleCommentAct);
+    editMenu->addSeparator();
+    
+    editMenu->addAction(indentAct);
+    editMenu->addAction(unindentAct);
 
     // Search Menu
     QMenu *searchMenu = menuBar()->addMenu(tr("&Pesquisa"));
-    searchMenu->addAction(tr("&Localizar..."), QKeySequence::Find, this, &MainWindow::showFindDialog);
-    searchMenu->addAction(tr("&Substituir..."), QKeySequence(Qt::CTRL | Qt::Key_H), this, &MainWindow::showReplaceDialog);
-    searchMenu->addAction(tr("Localizar &Próximo"), QKeySequence(Qt::Key_F3), this, &MainWindow::doFindNext);
-    searchMenu->addAction(tr("Localizar &Anterior"), QKeySequence(Qt::SHIFT | Qt::Key_F3), this, &MainWindow::doFindPrevious);
+    searchMenu->addAction(findAct);
+    searchMenu->addAction(replaceAct);
+    searchMenu->addAction(findNextAct);
+    searchMenu->addAction(findPrevAct);
 }
 
 // Search and Replace Implementation
