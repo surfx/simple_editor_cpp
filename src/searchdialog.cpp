@@ -50,9 +50,19 @@ SearchDialog::SearchDialog(QWidget *parent, bool replaceMode)
 
     connect(findNextButton, &QPushButton::clicked, this, &SearchDialog::findNext);
     connect(findPrevButton, &QPushButton::clicked, this, &SearchDialog::findPrevious);
+
+    // Ensure Enter key in search/replace fields triggers search
+    connect(searchEdit, &QLineEdit::returnPressed, findNextButton, &QPushButton::animateClick);
+    connect(replaceEdit, &QLineEdit::returnPressed, findNextButton, &QPushButton::animateClick);
     
     searchEdit->setFocus();
     
     // Standard dialog behavior
     findNextButton->setDefault(true);
+}
+
+void SearchDialog::setSearchText(const QString &text)
+{
+    searchEdit->setText(text);
+    searchEdit->selectAll();
 }

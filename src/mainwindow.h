@@ -31,6 +31,7 @@ protected:
     void closeEvent(QCloseEvent *event) override;
     void dragEnterEvent(QDragEnterEvent *event) override;
     void dropEvent(QDropEvent *event) override;
+    void resizeEvent(QResizeEvent *event) override;
 
 private slots:
     void newFile();
@@ -108,6 +109,8 @@ private:
 
     SearchDialog *searchDialog = nullptr;
     int currentThemeIndex = 0;
+    int normalWidth = 800;
+    int normalHeight = 600;
 
     // Notification Bar
     QWidget *notificationBar;

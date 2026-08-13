@@ -48,6 +48,55 @@ CodeEditor::CodeEditor(QWidget *parent) : QsciScintilla(parent)
 
     // Wrap mode off by default
     setWrapMode(QsciScintilla::WrapNone);
+
+    // Setup Highlight Indicator (Indicator 8)
+    indicatorDefine(QsciScintilla::BoxIndicator, 8);
+    setIndicatorForegroundColor(QColor(0, 0, 255, 100), 8); // Light blue box
+    setIndicatorOutlineColor(QColor(0, 0, 255, 200), 8);
+    setIndicatorDrawUnder(true, 8);
+
+    connect(this, &CodeEditor::cursorPositionChanged, this, &CodeEditor::highlightSelections);
+}
+
+void CodeEditor::highlightSelections()
+{
+    int totalLines = SendScintilla(SCI_GETLINECOUNT);
+    // Clear previous indicators
+    clearIndicatorRange(0, 0, totalLines - 1, text(totalLines - 1).length(), 8);
+
+    if (!hasSelectedText()) return;
+
+    int lineFrom, indexFrom, lineTo, indexTo;
+    getSelection(&lineFrom, &indexFrom, &lineTo, &indexTo);
+
+    QString selected = selectedText();
+    if (selected.isEmpty() || selected.length() < 2) return; // Don't highlight single chars
+
+    // Optimization: only search if it's a "simple" selection (same line or word)
+    // and not too long.
+    if (selected.length() > 100) return;
+
+    // Search and mark all occurrences
+    int searchLine = 0;
+    int searchIndex = 0;
+
+    // We use Scintilla's search to find all occurrences
+    while (findFirst(selected, false, true, false, false, true, searchLine, searchIndex, false)) {
+        int foundLineFrom, foundIndexFrom, foundLineTo, foundIndexTo;
+        getSelection(&foundLineFrom, &foundIndexFrom, &foundLineTo, &foundIndexTo);
+        
+        // Fill indicator for the found range
+        fillIndicatorRange(foundLineFrom, foundIndexFrom, foundLineTo, foundIndexTo, 8);
+        
+        // Move search position forward
+        searchLine = foundLineTo;
+        searchIndex = foundIndexTo;
+        
+        if (searchLine >= totalLines) break;
+    }
+    
+    // Restore original selection
+    setSelection(lineFrom, indexFrom, lineTo, indexTo);
 }
 
 void CodeEditor::setTheme(const EditorTheme &theme)
@@ -62,6 +111,12 @@ void CodeEditor::setTheme(const EditorTheme &theme)
     setMarginsForegroundColor(theme.marginsForeground);
     setMatchedBraceBackgroundColor(theme.braceBackground);
     setMatchedBraceForegroundColor(theme.braceForeground);
+    
+    // Update indicator color based on theme if needed
+    setIndicatorForegroundColor(QColor(theme.selectionBackground.red(), 
+                                       theme.selectionBackground.green(), 
+                                       theme.selectionBackground.blue(), 120), 8);
+    setIndicatorOutlineColor(theme.selectionBackground, 8);
 }
 
 void CodeEditor::duplicateLine()

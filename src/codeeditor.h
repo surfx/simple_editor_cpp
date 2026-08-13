@@ -25,6 +25,9 @@ public:
     void indentSelection();
     void unindentSelection();
 
+private slots:
+    void highlightSelections();
+
 protected:
     void contextMenuEvent(QContextMenuEvent *event) override;
     void keyPressEvent(QKeyEvent *e) override;

@@ -9,7 +9,7 @@ QString SessionManager::getSessionFilePath() {
     return dir.filePath("session.json");
 }
 
-void SessionManager::saveSession(const QList<TabState>& tabs, int currentIndex) {
+void SessionManager::saveSession(const QList<TabState>& tabs, int currentIndex, int width, int height) {
     QJsonArray tabsArray;
     for (const auto& tab : tabs) {
         QJsonObject tabObj;
@@ -24,6 +24,8 @@ void SessionManager::saveSession(const QList<TabState>& tabs, int currentIndex) 
     QJsonObject root;
     root["tabs"] = tabsArray;
     root["currentIndex"] = currentIndex;
+    root["windowWidth"] = width;
+    root["windowHeight"] = height;
 
     QFile file(getSessionFilePath());
     if (file.open(QIODevice::WriteOnly)) {
@@ -32,7 +34,7 @@ void SessionManager::saveSession(const QList<TabState>& tabs, int currentIndex) 
     }
 }
 
-bool SessionManager::loadSession(QList<TabState>& tabs, int& currentIndex) {
+bool SessionManager::loadSession(QList<TabState>& tabs, int& currentIndex, int& width, int& height) {
     QFile file(getSessionFilePath());
     if (!file.open(QIODevice::ReadOnly)) {
         return false;
@@ -46,6 +48,8 @@ bool SessionManager::loadSession(QList<TabState>& tabs, int& currentIndex) {
     QJsonObject root = doc.object();
     QJsonArray tabsArray = root["tabs"].toArray();
     currentIndex = root["currentIndex"].toInt();
+    width = root["windowWidth"].toInt(800);
+    height = root["windowHeight"].toInt(600);
 
     for (int i = 0; i < tabsArray.size(); ++i) {
         QJsonObject tabObj = tabsArray[i].toObject();

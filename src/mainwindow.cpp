@@ -76,6 +76,8 @@ MainWindow::MainWindow(QWidget *parent)
     createActions();
     createMenus();
     createToolBar();
+    
+    resize(800, 600);
     loadSession();
 
     if (tabWidget->count() == 0) {
@@ -84,8 +86,10 @@ MainWindow::MainWindow(QWidget *parent)
 
     setWindowTitle("Simple C++ Editor");
     setWindowIcon(QIcon::fromTheme("text-x-generic"));
-    resize(800, 600);
     setAcceptDrops(true);
+    
+    // Forçamos a janela a nunca abrir maximizada
+    showNormal();
 
     // Setup Single Instance Server
     localServer = new QLocalServer(this);
@@ -121,6 +125,20 @@ void MainWindow::handleMessage(const QString &message)
     showNormal();
     raise();
     activateWindow();
+}
+
+void MainWindow::resizeEvent(QResizeEvent *event)
+{
+    QMainWindow::resizeEvent(event);
+    
+    // No Wayland, o estado da janela (maximized) pode demorar alguns ms para atualizar.
+    // Usamos um timer curto para validar se o tamanho novo é realmente um tamanho "normal".
+    QTimer::singleShot(100, this, [this]() {
+        if (!(windowState() & (Qt::WindowMaximized | Qt::WindowFullScreen | Qt::WindowMinimized))) {
+            normalWidth = width();
+            normalHeight = height();
+        }
+    });
 }
 
 void MainWindow::dragEnterEvent(QDragEnterEvent *event)
@@ -573,20 +591,28 @@ void MainWindow::saveSession()
             states.append(state);
         }
     }
-    SessionManager::saveSession(states, tabWidget->currentIndex());
+    SessionManager::saveSession(states, tabWidget->currentIndex(), normalWidth, normalHeight);
 }
 
 void MainWindow::loadSession()
 {
     QList<TabState> states;
     int currentIndex = 0;
-    if (SessionManager::loadSession(states, currentIndex)) {
+    int w = 800;
+    int h = 600;
+    
+    if (SessionManager::loadSession(states, currentIndex, w, h)) {
         for (const auto& state : states) {
             addEditorTab(state.filePath, state.unsavedContent, state.isModified);
         }
         if (currentIndex >= 0 && currentIndex < tabWidget->count()) {
             tabWidget->setCurrentIndex(currentIndex);
         }
+        
+        // Restore size with minimum constraints
+        this->normalWidth = qMax(300, w);
+        this->normalHeight = qMax(300, h);
+        resize(this->normalWidth, this->normalHeight);
     }
 }
 
@@ -751,11 +777,19 @@ void MainWindow::hideNotification()
 // Search and Replace Implementation
 void MainWindow::showFindDialog()
 {
+    CodeEditor *editor = currentEditor();
+    if (!editor) return;
+
     if (searchDialog) {
         searchDialog->close();
         delete searchDialog;
     }
     searchDialog = new SearchDialog(this, false);
+    
+    if (editor->hasSelectedText()) {
+        searchDialog->setSearchText(editor->selectedText());
+    }
+
     connect(searchDialog, &SearchDialog::findNext, this, &MainWindow::doFindNext);
     connect(searchDialog, &SearchDialog::findPrevious, this, &MainWindow::doFindPrevious);
     
@@ -766,11 +800,19 @@ void MainWindow::showFindDialog()
 
 void MainWindow::showReplaceDialog()
 {
+    CodeEditor *editor = currentEditor();
+    if (!editor) return;
+
     if (searchDialog) {
         searchDialog->close();
         delete searchDialog;
     }
     searchDialog = new SearchDialog(this, true);
+
+    if (editor->hasSelectedText()) {
+        searchDialog->setSearchText(editor->selectedText());
+    }
+
     connect(searchDialog, &SearchDialog::findNext, this, &MainWindow::doFindNext);
     connect(searchDialog, &SearchDialog::findPrevious, this, &MainWindow::doFindPrevious);
     connect(searchDialog, &SearchDialog::replace, this, &MainWindow::doReplace);
@@ -785,14 +827,31 @@ void MainWindow::doFindNext()
 {
     CodeEditor *editor = currentEditor();
     if (editor && searchDialog) {
-        bool found = editor->findNext();
+        QString term = searchDialog->getSearchText();
+        if (term.isEmpty()) return;
+
+        int line, index;
+        if (editor->hasSelectedText()) {
+            int lineFrom, indexFrom, lineTo, indexTo;
+            editor->getSelection(&lineFrom, &indexFrom, &lineTo, &indexTo);
+            line = lineTo;
+            index = indexTo;
+        } else {
+            editor->getCursorPosition(&line, &index);
+        }
+
+        bool found = editor->findFirst(term,
+                                       searchDialog->isRegex(),
+                                       searchDialog->isCaseSensitive(),
+                                       searchDialog->isWholeWord(),
+                                       true,  // wrap
+                                       true,  // forward
+                                       line,
+                                       index,
+                                       true); // show
+        
         if (!found) {
-            // Try from beginning (wrap)
-            editor->findFirst(searchDialog->getSearchText(), 
-                              searchDialog->isRegex(), 
-                              searchDialog->isCaseSensitive(), 
-                              searchDialog->isWholeWord(), 
-                              true); // wrap
+            // Not found message?
         }
     }
 }
@@ -801,12 +860,28 @@ void MainWindow::doFindPrevious()
 {
     CodeEditor *editor = currentEditor();
     if (editor && searchDialog) {
-        editor->findFirst(searchDialog->getSearchText(), 
-                          searchDialog->isRegex(), 
-                          searchDialog->isCaseSensitive(), 
-                          searchDialog->isWholeWord(), 
-                          true, // wrap
-                          false); // forward = false
+        QString term = searchDialog->getSearchText();
+        if (term.isEmpty()) return;
+
+        int line, index;
+        if (editor->hasSelectedText()) {
+            int lineFrom, indexFrom, lineTo, indexTo;
+            editor->getSelection(&lineFrom, &indexFrom, &lineTo, &indexTo);
+            line = lineFrom;
+            index = indexFrom;
+        } else {
+            editor->getCursorPosition(&line, &index);
+        }
+
+        editor->findFirst(term,
+                          searchDialog->isRegex(),
+                          searchDialog->isCaseSensitive(),
+                          searchDialog->isWholeWord(),
+                          true,  // wrap
+                          false, // forward = false
+                          line,
+                          index,
+                          true); // show
     }
 }
 

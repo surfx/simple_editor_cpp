@@ -18,8 +18,8 @@ struct TabState {
 
 class SessionManager {
 public:
-    static void saveSession(const QList<TabState>& tabs, int currentIndex);
-    static bool loadSession(QList<TabState>& tabs, int& currentIndex);
+    static void saveSession(const QList<TabState>& tabs, int currentIndex, int width, int height);
+    static bool loadSession(QList<TabState>& tabs, int& currentIndex, int& width, int& height);
 
 private:
     static QString getSessionFilePath();

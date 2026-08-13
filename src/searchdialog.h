@@ -16,6 +16,7 @@ class SearchDialog : public QDialog
 public:
     explicit SearchDialog(QWidget *parent = nullptr, bool replaceMode = false);
 
+    void setSearchText(const QString &text);
     QString getSearchText() const { return searchEdit->text(); }
     QString getReplaceText() const { return replaceEdit->text(); }
     bool isCaseSensitive() const { return caseCheckBox->isChecked(); }
