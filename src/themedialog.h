@@ -21,6 +21,16 @@ struct EditorTheme {
     QColor marginsForeground;
     QColor braceBackground;
     QColor braceForeground;
+    
+    // Syntax colors
+    QColor keyword;
+    QColor string;
+    QColor comment;
+    QColor type;
+    QColor preprocessor;
+    QColor number;
+    QColor tag;
+    QColor attribute;
 };
 
 class ThemeDialog : public QDialog

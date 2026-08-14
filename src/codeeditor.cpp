@@ -9,13 +9,21 @@
 #include <QFileInfo>
 #include <QDir>
 
+// Lexer Includes
+#include <Qsci/qscilexercpp.h>
+#include <Qsci/qscilexerhtml.h>
+#include <Qsci/qscilexercss.h>
+#include <Qsci/qscilexerjavascript.h>
+#include <Qsci/qscilexerpython.h>
+#include <Qsci/qscilexerxml.h>
+#include <Qsci/qscilexerbash.h>
+#include <Qsci/qscilexersql.h>
+#include <Qsci/qscilexerjson.h>
+
 CodeEditor::CodeEditor(QWidget *parent) : QsciScintilla(parent)
 {
     // Basic settings
     setUtf8(true);
-    
-    // Apply Default Theme
-    setTheme(ThemeDialog::getAvailableThemes().first());
     
     // Set Monospace font
     QFont font("Monospace", 10);
@@ -29,18 +37,21 @@ CodeEditor::CodeEditor(QWidget *parent) : QsciScintilla(parent)
     setMarginType(1, QsciScintilla::NumberMargin);
     setMarginWidth(1, "0000");
     
-    // Brace matching
-    // (Colors set by setTheme)
-
-    // COLUMN MODE (The magic part)
-    SendScintilla(QsciScintilla::SCI_SETMULTIPLESELECTION, true);
-    SendScintilla(QsciScintilla::SCI_SETADDITIONALSELECTIONTYPING, true);
-    SendScintilla(QsciScintilla::SCI_SETMULTIPASTE, true);
-    SendScintilla(QsciScintilla::SCI_SETVIRTUALSPACEOPTIONS, 1); // SCVS_RECTANGULARSELECTION
+    // Folding margin (initially 0, will be enabled by setLanguage)
+    setFolding(QsciScintilla::CircledTreeFoldStyle);
+    setMarginType(2, QsciScintilla::SymbolMargin);
+    setMarginWidth(2, 0);
+    setMarginSensitivity(2, false);
     
+    // Apply Default Theme
+    setTheme(ThemeDialog::getAvailableThemes().first());
+    
+    // Brace matching
+    setBraceMatching(QsciScintilla::SloppyBraceMatch);
+
     // Tab settings
     setTabWidth(4);
-    setIndentationsUseTabs(false); // Spaces for tabs is usually better for alignment
+    setIndentationsUseTabs(false);
     setAutoIndent(true);
     setTabIndents(true);
     setBackspaceUnindents(true);
@@ -50,57 +61,67 @@ CodeEditor::CodeEditor(QWidget *parent) : QsciScintilla(parent)
     setWrapMode(QsciScintilla::WrapNone);
 
     // Setup Highlight Indicator (Indicator 8)
-    indicatorDefine(QsciScintilla::BoxIndicator, 8);
-    setIndicatorForegroundColor(QColor(0, 0, 255, 100), 8); // Light blue box
-    setIndicatorOutlineColor(QColor(0, 0, 255, 200), 8);
-    setIndicatorDrawUnder(true, 8);
+    // Using StraightBoxIndicator for a solid, modern look
+    indicatorDefine(QsciScintilla::StraightBoxIndicator, 8);
+    setIndicatorForegroundColor(QColor(0, 0, 255, 120), 8); // Slightly more opaque
+    setIndicatorOutlineColor(QColor(0, 0, 255, 255), 8); // Solid outline
+    setIndicatorDrawUnder(true, 8); // Keep it behind text for legibility
 
     connect(this, &CodeEditor::cursorPositionChanged, this, &CodeEditor::highlightSelections);
 }
 
 void CodeEditor::highlightSelections()
 {
-    int totalLines = SendScintilla(SCI_GETLINECOUNT);
-    // Clear previous indicators
-    clearIndicatorRange(0, 0, totalLines - 1, text(totalLines - 1).length(), 8);
+    // Recursion guard
+    static bool isHighlighting = false;
+    if (isHighlighting) return;
+    isHighlighting = true;
 
-    if (!hasSelectedText()) return;
-
-    int lineFrom, indexFrom, lineTo, indexTo;
-    getSelection(&lineFrom, &indexFrom, &lineTo, &indexTo);
-
-    QString selected = selectedText();
-    if (selected.isEmpty() || selected.length() < 2) return; // Don't highlight single chars
-
-    // Optimization: only search if it's a "simple" selection (same line or word)
-    // and not too long.
-    if (selected.length() > 100) return;
-
-    // Search and mark all occurrences
-    int searchLine = 0;
-    int searchIndex = 0;
-
-    // We use Scintilla's search to find all occurrences
-    while (findFirst(selected, false, true, false, false, true, searchLine, searchIndex, false)) {
-        int foundLineFrom, foundIndexFrom, foundLineTo, foundIndexTo;
-        getSelection(&foundLineFrom, &foundIndexFrom, &foundLineTo, &foundIndexTo);
-        
-        // Fill indicator for the found range
-        fillIndicatorRange(foundLineFrom, foundIndexFrom, foundLineTo, foundIndexTo, 8);
-        
-        // Move search position forward
-        searchLine = foundLineTo;
-        searchIndex = foundIndexTo;
-        
-        if (searchLine >= totalLines) break;
-    }
+    // Use Scintilla messages to find and highlight without changing selection.
+    long docLen = SendScintilla(SCI_GETLENGTH);
     
-    // Restore original selection
-    setSelection(lineFrom, indexFrom, lineTo, indexTo);
+    // Clear previous indicators (Indicator 8)
+    SendScintilla(SCI_SETINDICATORCURRENT, 8);
+    SendScintilla(SCI_INDICATORCLEARRANGE, 0, docLen);
+
+    if (hasSelectedText()) {
+        QString selected = selectedText();
+        // Only highlight if selection is a reasonable word/phrase
+        if (!selected.isEmpty() && selected.length() >= 2 && selected.length() <= 100) {
+            QByteArray bytes = selected.toUtf8();
+            
+            // Set search parameters (SCFIND_MATCHCASE | SCFIND_WHOLEWORD if needed)
+            // For now, let's match what the user selects exactly.
+            SendScintilla(SCI_SETSEARCHFLAGS, SCFIND_MATCHCASE);
+            
+            long searchStart = 0;
+            while (searchStart < docLen) {
+                SendScintilla(SCI_SETTARGETSTART, searchStart);
+                SendScintilla(SCI_SETTARGETEND, docLen);
+                
+                long pos = SendScintilla(SCI_SEARCHINTARGET, bytes.length(), bytes.constData());
+                if (pos == -1) break;
+                
+                long targetStart = SendScintilla(SCI_GETTARGETSTART);
+                long targetEnd = SendScintilla(SCI_GETTARGETEND);
+                
+                // Fill indicator for this range
+                SendScintilla(SCI_SETINDICATORCURRENT, 8);
+                SendScintilla(SCI_INDICATORFILLRANGE, targetStart, targetEnd - targetStart);
+                
+                searchStart = targetEnd;
+                if (searchStart >= docLen) break;
+            }
+        }
+    }
+
+    isHighlighting = false;
 }
 
 void CodeEditor::setTheme(const EditorTheme &theme)
 {
+    currentTheme = theme;
+    
     setPaper(theme.background);
     setColor(theme.foreground);
     setCaretForegroundColor(theme.caret);
@@ -112,11 +133,171 @@ void CodeEditor::setTheme(const EditorTheme &theme)
     setMatchedBraceBackgroundColor(theme.braceBackground);
     setMatchedBraceForegroundColor(theme.braceForeground);
     
-    // Update indicator color based on theme if needed
+    // Folding colors
+    setFoldMarginColors(theme.marginsBackground, theme.marginsBackground);
+    
+    // IMPORTANT: Re-assert global font to prevent lexers from changing sizes/families
+    QFont globalFont("Monospace", 10);
+    globalFont.setFixedPitch(true);
+    setFont(globalFont);
+
+    if (lexer()) {
+        lexer()->setFont(globalFont);
+        applyThemeToLexer(lexer(), theme);
+    }
+
+    // Update indicator color based on theme
+    // We use a higher alpha (160) for the fill and full opacity for the border to make it POP
     setIndicatorForegroundColor(QColor(theme.selectionBackground.red(), 
                                        theme.selectionBackground.green(), 
-                                       theme.selectionBackground.blue(), 120), 8);
+                                       theme.selectionBackground.blue(), 160), 8);
     setIndicatorOutlineColor(theme.selectionBackground, 8);
+}
+
+void CodeEditor::applyThemeToLexer(QsciLexer *l, const EditorTheme &theme)
+{
+    if (!l) return;
+
+    l->setPaper(theme.background);
+    l->setDefaultPaper(theme.background);
+    l->setColor(theme.foreground);
+    l->setDefaultColor(theme.foreground);
+
+    // Common styles mapping for supported lexers using qobject_cast for safety
+    if (auto *cpp = qobject_cast<QsciLexerCPP *>(l)) {
+        cpp->setColor(theme.keyword, QsciLexerCPP::Keyword);
+        cpp->setColor(theme.type, QsciLexerCPP::KeywordSet2);
+        cpp->setColor(theme.string, QsciLexerCPP::DoubleQuotedString);
+        cpp->setColor(theme.string, QsciLexerCPP::SingleQuotedString);
+        cpp->setColor(theme.comment, QsciLexerCPP::Comment);
+        cpp->setColor(theme.comment, QsciLexerCPP::CommentLine);
+        cpp->setColor(theme.preprocessor, QsciLexerCPP::PreProcessor);
+        cpp->setColor(theme.number, QsciLexerCPP::Number);
+    } else if (auto *html = qobject_cast<QsciLexerHTML *>(l)) {
+        html->setColor(theme.tag, QsciLexerHTML::Tag);
+        html->setColor(theme.attribute, QsciLexerHTML::Attribute);
+        html->setColor(theme.string, QsciLexerHTML::HTMLDoubleQuotedString);
+        html->setColor(theme.string, QsciLexerHTML::HTMLSingleQuotedString);
+        html->setColor(theme.comment, QsciLexerHTML::HTMLComment);
+    } else if (auto *css = qobject_cast<QsciLexerCSS *>(l)) {
+        css->setColor(theme.tag, QsciLexerCSS::Tag);
+        css->setColor(theme.keyword, QsciLexerCSS::CSS1Property);
+        css->setColor(theme.keyword, QsciLexerCSS::CSS2Property);
+        css->setColor(theme.string, QsciLexerCSS::DoubleQuotedString);
+        css->setColor(theme.string, QsciLexerCSS::SingleQuotedString);
+        css->setColor(theme.comment, QsciLexerCSS::Comment);
+    } else if (auto *py = qobject_cast<QsciLexerPython *>(l)) {
+        py->setColor(theme.keyword, QsciLexerPython::Keyword);
+        py->setColor(theme.string, QsciLexerPython::DoubleQuotedString);
+        py->setColor(theme.string, QsciLexerPython::SingleQuotedString);
+        py->setColor(theme.comment, QsciLexerPython::Comment);
+        py->setColor(theme.number, QsciLexerPython::Number);
+        py->setColor(theme.type, QsciLexerPython::ClassName);
+    } else if (auto *bash = qobject_cast<QsciLexerBash *>(l)) {
+        bash->setColor(theme.keyword, QsciLexerBash::Keyword);
+        bash->setColor(theme.string, QsciLexerBash::DoubleQuotedString);
+        bash->setColor(theme.string, QsciLexerBash::SingleQuotedString);
+        bash->setColor(theme.comment, QsciLexerBash::Comment);
+        bash->setColor(theme.number, QsciLexerBash::Number);
+    } else if (auto *sql = qobject_cast<QsciLexerSQL *>(l)) {
+        sql->setColor(theme.keyword, QsciLexerSQL::Keyword);
+        sql->setColor(theme.string, QsciLexerSQL::DoubleQuotedString);
+        sql->setColor(theme.string, QsciLexerSQL::SingleQuotedString);
+        sql->setColor(theme.comment, QsciLexerSQL::Comment);
+        sql->setColor(theme.comment, QsciLexerSQL::CommentLine);
+        sql->setColor(theme.number, QsciLexerSQL::Number);
+    } else if (auto *json = qobject_cast<QsciLexerJSON *>(l)) {
+        json->setColor(theme.keyword, QsciLexerJSON::Property);
+        json->setColor(theme.string, QsciLexerJSON::String);
+        json->setColor(theme.number, QsciLexerJSON::Number);
+        json->setColor(theme.keyword, QsciLexerJSON::Keyword);
+    }
+}
+
+void CodeEditor::setLanguage(const QString &lang)
+{
+    m_language = lang;
+    QsciLexer *l = nullptr;
+    QString lcase = lang.toLower();
+
+    // Reset margin for non-folding states
+    setMarginWidth(2, 0);
+    setMarginSensitivity(2, false);
+
+    if (lcase == "cpp" || lcase == "c++" || lcase == "c") {
+        l = new QsciLexerCPP(this);
+    } else if (lcase == "html") {
+        l = new QsciLexerHTML(this);
+    } else if (lcase == "css") {
+        l = new QsciLexerCSS(this);
+    } else if (lcase == "javascript" || lcase == "js") {
+        l = new QsciLexerJavaScript(this);
+    } else if (lcase == "json") {
+        l = new QsciLexerJSON(this);
+    } else if (lcase == "python" || lcase == "py") {
+        l = new QsciLexerPython(this);
+    } else if (lcase == "xml") {
+        l = new QsciLexerXML(this);
+    } else if (lcase == "bash" || lcase == "sh") {
+        l = new QsciLexerBash(this);
+    } else if (lcase == "sql") {
+        l = new QsciLexerSQL(this);
+    }
+
+    setLexer(l);
+
+    if (l) {
+        setMarginWidth(2, 16);
+        setMarginSensitivity(2, true);
+        l->setFont(font());
+        applyThemeToLexer(l, currentTheme);
+        
+        if (lcase == "html") {
+            SendScintilla(QsciScintilla::SCI_SETPROPERTY, "asp.default.language", "1");
+            SendScintilla(QsciScintilla::SCI_SETPROPERTY, "html.tags.case.sensitive", "0");
+        }
+    }
+
+    // Force re-application of theme colors to the whole editor to fix background issues
+    setTheme(currentTheme);
+    
+    // RE-ASSERT tab and font settings which can be reset by lexers
+    setTabWidth(4);
+    setIndentationsUseTabs(false);
+    
+    // Clear folding if no lexer
+    if (!l) {
+        SendScintilla(QsciScintilla::SCI_SETFOLDLEVEL, 0, 0x400);
+        // Scintilla reset styling
+        SendScintilla(QsciScintilla::SCI_CLEARDOCUMENTSTYLE);
+    }
+}
+
+void CodeEditor::detectLexer(const QString &filePath)
+{
+    QString ext = QFileInfo(filePath).suffix().toLower();
+    
+    if (ext == "cpp" || ext == "h" || ext == "c" || ext == "hpp" || ext == "cc") {
+        setLanguage("cpp");
+    } else if (ext == "html" || ext == "htm") {
+        setLanguage("html");
+    } else if (ext == "css") {
+        setLanguage("css");
+    } else if (ext == "js") {
+        setLanguage("javascript");
+    } else if (ext == "json") {
+        setLanguage("json");
+    } else if (ext == "py") {
+        setLanguage("python");
+    } else if (ext == "xml") {
+        setLanguage("xml");
+    } else if (ext == "sh") {
+        setLanguage("bash");
+    } else if (ext == "sql") {
+        setLanguage("sql");
+    } else {
+        setLexer(nullptr);
+    }
 }
 
 void CodeEditor::duplicateLine()

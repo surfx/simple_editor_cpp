@@ -15,6 +15,7 @@ void SessionManager::saveSession(const QList<TabState>& tabs, int currentIndex, 
         QJsonObject tabObj;
         tabObj["filePath"] = tab.filePath;
         tabObj["isModified"] = tab.isModified;
+        tabObj["language"] = tab.language;
         if (tab.isModified) {
             tabObj["unsavedContent"] = tab.unsavedContent;
         }
@@ -56,6 +57,7 @@ bool SessionManager::loadSession(QList<TabState>& tabs, int& currentIndex, int& 
         TabState state;
         state.filePath = tabObj["filePath"].toString();
         state.isModified = tabObj["isModified"].toBool();
+        state.language = tabObj["language"].toString();
         if (state.isModified) {
             state.unsavedContent = tabObj["unsavedContent"].toString();
         }

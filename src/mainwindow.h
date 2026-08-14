@@ -24,7 +24,7 @@ public:
     ~MainWindow();
 
 public slots:
-    void addEditorTab(const QString &filePath = QString(), const QString &content = QString(), bool isModified = false);
+    void addEditorTab(const QString &filePath = QString(), const QString &content = QString(), bool isModified = false, const QString &language = QString());
     void handleMessage(const QString &message);
 
 protected:
@@ -48,6 +48,7 @@ private slots:
     void applyTheme(int index);
     void handleFileChanged(const QString &path);
     void reloadCurrentFile();
+    void setLanguage(const QString &lang);
     void hideNotification();
 
     // Search and Replace

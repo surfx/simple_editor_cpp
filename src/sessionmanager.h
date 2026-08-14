@@ -14,6 +14,7 @@ struct TabState {
     QString filePath;
     bool isModified;
     QString unsavedContent;
+    QString language;
 };
 
 class SessionManager {

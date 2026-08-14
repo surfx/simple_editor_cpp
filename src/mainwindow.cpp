@@ -329,7 +329,7 @@ void MainWindow::newFile()
     addEditorTab();
 }
 
-void MainWindow::addEditorTab(const QString &filePath, const QString &content, bool isModified)
+void MainWindow::addEditorTab(const QString &filePath, const QString &content, bool isModified, const QString &language)
 {
     QString absPath;
     if (!filePath.isEmpty()) {
@@ -370,6 +370,17 @@ void MainWindow::addEditorTab(const QString &filePath, const QString &content, b
     }
 
     editor->setModified(isModified);
+
+    if (!absPath.isEmpty()) {
+        editor->detectLexer(absPath);
+    }
+    
+    if (!language.isEmpty()) {
+        editor->setLanguage(language);
+    }
+
+    // Apply current theme again to ensure lexer gets the colors
+    editor->setTheme(ThemeDialog::getAvailableThemes().at(currentThemeIndex));
 
     QString title = absPath.isEmpty() ? "untitled" : QFileInfo(absPath).fileName();
     int index = tabWidget->addTab(editor, title);
@@ -453,6 +464,9 @@ bool MainWindow::saveFileAs()
     }
 
     editor->setProperty("filePath", filePath);
+    editor->detectLexer(filePath);
+    editor->setTheme(ThemeDialog::getAvailableThemes().at(currentThemeIndex));
+    
     return saveFile(false); // Pass false to skip existence check for the new path
 }
 
@@ -579,6 +593,7 @@ void MainWindow::saveSession()
             TabState state;
             QString filePath = editor->property("filePath").toString();
             state.filePath = filePath;
+            state.language = editor->currentLanguage();
             
             bool isExternallyModified = !filePath.isEmpty() && externallyModifiedFiles.value(filePath, false);
             state.isModified = editor->isModified() || isExternallyModified;
@@ -603,7 +618,7 @@ void MainWindow::loadSession()
     
     if (SessionManager::loadSession(states, currentIndex, w, h)) {
         for (const auto& state : states) {
-            addEditorTab(state.filePath, state.unsavedContent, state.isModified);
+            addEditorTab(state.filePath, state.unsavedContent, state.isModified, state.language);
         }
         if (currentIndex >= 0 && currentIndex < tabWidget->count()) {
             tabWidget->setCurrentIndex(currentIndex);
@@ -613,6 +628,14 @@ void MainWindow::loadSession()
         this->normalWidth = qMax(300, w);
         this->normalHeight = qMax(300, h);
         resize(this->normalWidth, this->normalHeight);
+    }
+}
+
+void MainWindow::setLanguage(const QString &lang)
+{
+    CodeEditor *editor = currentEditor();
+    if (editor) {
+        editor->setLanguage(lang);
     }
 }
 
@@ -668,6 +691,15 @@ void MainWindow::createMenus()
     viewMenu->addAction(wordWrapAction);
     viewMenu->addSeparator();
     viewMenu->addAction(changeThemeAct);
+
+    // Language Menu
+    QMenu *langMenu = menuBar()->addMenu(tr("&Linguagem"));
+    QStringList languages = {"Plain Text", "C++", "HTML", "CSS", "JavaScript", "JSON", "Python", "XML", "Bash", "SQL"};
+    for (const QString &lang : languages) {
+        langMenu->addAction(lang, [this, lang]() {
+            setLanguage(lang == "Plain Text" ? "" : lang);
+        });
+    }
 }
 
 void MainWindow::showThemeDialog()
