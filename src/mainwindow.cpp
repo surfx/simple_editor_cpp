@@ -921,7 +921,43 @@ void MainWindow::doReplace()
 {
     CodeEditor *editor = currentEditor();
     if (editor && searchDialog) {
-        editor->replace(searchDialog->getReplaceText());
+        QString term = searchDialog->getSearchText();
+        if (term.isEmpty()) return;
+
+        // QSciScintilla::replace() only works if the selection was found via findFirst/findNext.
+        // We try to "find" the current selection to mark it as found if it matches the term.
+        if (editor->hasSelectedText()) {
+            int lineFrom, indexFrom, lineTo, indexTo;
+            editor->getSelection(&lineFrom, &indexFrom, &lineTo, &indexTo);
+            
+            bool isMatch = editor->findFirst(term,
+                                            searchDialog->isRegex(),
+                                            searchDialog->isCaseSensitive(),
+                                            searchDialog->isWholeWord(),
+                                            false, // no wrap
+                                            true,  // forward
+                                            lineFrom,
+                                            indexFrom,
+                                            false); // don't show yet
+            
+            if (isMatch) {
+                int fLineFrom, fIndexFrom, fLineTo, fIndexTo;
+                editor->getSelection(&fLineFrom, &fIndexFrom, &fLineTo, &fIndexTo);
+                if (fLineFrom == lineFrom && fIndexFrom == indexFrom &&
+                    fLineTo == lineTo && fIndexTo == indexTo) {
+                    editor->replace(searchDialog->getReplaceText());
+                } else {
+                    // findFirst moved the selection to the next match, restore it
+                    // so that doFindNext() can start from the correct position.
+                    editor->setSelection(lineFrom, indexFrom, lineTo, indexTo);
+                }
+            }
+        } else {
+            // If no selection, just find the next one
+            doFindNext();
+            return;
+        }
+        
         doFindNext();
     }
 }
@@ -930,8 +966,24 @@ void MainWindow::doReplaceAll()
 {
     CodeEditor *editor = currentEditor();
     if (editor && searchDialog) {
-        while (editor->findNext()) {
+        QString term = searchDialog->getSearchText();
+        if (term.isEmpty()) return;
+
+        // Initialize search from the beginning
+        bool found = editor->findFirst(term,
+                                       searchDialog->isRegex(),
+                                       searchDialog->isCaseSensitive(),
+                                       searchDialog->isWholeWord(),
+                                       false, // no wrap
+                                       true,  // forward
+                                       0, 0,
+                                       false);
+        
+        if (found) {
             editor->replace(searchDialog->getReplaceText());
+            while (editor->findNext()) {
+                editor->replace(searchDialog->getReplaceText());
+            }
         }
     }
 }
