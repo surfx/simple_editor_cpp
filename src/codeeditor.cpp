@@ -52,7 +52,7 @@ CodeEditor::CodeEditor(QWidget *parent) : QsciScintilla(parent)
     // Tab settings
     setTabWidth(4);
     setIndentationsUseTabs(false);
-    setAutoIndent(true);
+    setAutoIndent(false);
     setTabIndents(true);
     setBackspaceUnindents(true);
     setIndentationGuides(true);
@@ -261,9 +261,10 @@ void CodeEditor::setLanguage(const QString &lang)
     // Force re-application of theme colors to the whole editor to fix background issues
     setTheme(currentTheme);
     
-    // RE-ASSERT tab and font settings which can be reset by lexers
+    // RE-ASSERT tab, font and auto-indent settings which can be reset by lexers
     setTabWidth(4);
     setIndentationsUseTabs(false);
+    setAutoIndent(false);
     
     // Clear folding if no lexer
     if (!l) {
@@ -357,6 +358,48 @@ void CodeEditor::toggleComment()
 
 void CodeEditor::keyPressEvent(QKeyEvent *e)
 {
+    // Custom Auto-Indent implementation to fix the "look-back" bug.
+    // We handle this manually to ensure it strictly follows the current line's indentation.
+    Qt::KeyboardModifiers mods = e->modifiers();
+    mods &= ~Qt::KeypadModifier; // Ignore if it's from the keypad
+
+    if ((e->key() == Qt::Key_Return || e->key() == Qt::Key_Enter) && mods == Qt::NoModifier) {
+        int selections = SendScintilla(SCI_GETSELECTIONS);
+        if (selections <= 1) {
+            beginUndoAction();
+
+            // 1. Handle selection removal if any
+            if (hasSelectedText()) {
+                removeSelectedText();
+            }
+
+            // 2. Get current line indentation BEFORE inserting newline
+            int line, col;
+            getCursorPosition(&line, &col);
+            int indent = SendScintilla(SCI_GETLINEINDENTATION, line);
+
+            // 3. Insert newline manually (bypassing base class "smart" logic)
+            SendScintilla(SCI_NEWLINE);
+
+            // 4. Apply indentation to the new line
+            int newLine, newCol;
+            getCursorPosition(&newLine, &newCol);
+            
+            if (newLine > line) {
+                SendScintilla(SCI_SETLINEINDENTATION, newLine, indent);
+                
+                // Move the cursor to the end of the new indentation
+                int indentPos = SendScintilla(SCI_GETLINEINDENTPOSITION, newLine);
+                int lineStartPos = SendScintilla(SCI_POSITIONFROMLINE, newLine);
+                setCursorPosition(newLine, indentPos - lineStartPos);
+            }
+
+            endUndoAction();
+            e->accept();
+            return;
+        }
+    }
+
     // Handle navigation for multiple selections manually
     if (e->key() == Qt::Key_Left || e->key() == Qt::Key_Right ||
         e->key() == Qt::Key_Up   || e->key() == Qt::Key_Down  ||
