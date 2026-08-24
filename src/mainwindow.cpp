@@ -76,7 +76,10 @@ MainWindow::MainWindow(QWidget *parent)
     createActions();
     createMenus();
     createToolBar();
-    
+
+    // Restore global word wrap preference
+    wordWrapAction->setChecked(SessionManager::loadWordWrapEnabled());
+
     resize(800, 600);
     loadSession();
 
@@ -344,7 +347,10 @@ void MainWindow::addEditorTab(const QString &filePath, const QString &content, b
     }
 
     CodeEditor *editor = new CodeEditor();
-    
+
+    // Apply global word wrap preference
+    editor->setWrapMode(wordWrapAction->isChecked() ? QsciScintilla::WrapWord : QsciScintilla::WrapNone);
+
     // Apply current theme
     editor->setTheme(ThemeDialog::getAvailableThemes().at(currentThemeIndex));
 
@@ -567,9 +573,14 @@ void MainWindow::onTabChanged(int index)
 
 void MainWindow::toggleWordWrap(bool checked)
 {
-    CodeEditor *editor = currentEditor();
-    if (editor) {
-        editor->setWrapMode(checked ? QsciScintilla::WrapWord : QsciScintilla::WrapNone);
+    // Persist global preference
+    SessionManager::saveWordWrapEnabled(checked);
+
+    for (int i = 0; i < tabWidget->count(); ++i) {
+        CodeEditor *editor = qobject_cast<CodeEditor*>(tabWidget->widget(i));
+        if (editor) {
+            editor->setWrapMode(checked ? QsciScintilla::WrapWord : QsciScintilla::WrapNone);
+        }
     }
 }
 

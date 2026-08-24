@@ -66,3 +66,41 @@ bool SessionManager::loadSession(QList<TabState>& tabs, int& currentIndex, int& 
 
     return true;
 }
+
+QString SessionManager::getSettingsFilePath() {
+    QString path = QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation);
+    QDir dir(path);
+    if (!dir.exists()) {
+        dir.mkpath(".");
+    }
+    return dir.filePath("settings.json");
+}
+
+void SessionManager::saveWordWrapEnabled(bool enabled) {
+    QFile file(getSettingsFilePath());
+
+    QJsonObject root;
+    if (file.open(QIODevice::ReadOnly)) {
+        root = QJsonDocument::fromJson(file.readAll()).object();
+        file.close();
+    }
+
+    root["wordWrap"] = enabled;
+
+    if (file.open(QIODevice::WriteOnly)) {
+        file.write(QJsonDocument(root).toJson());
+        file.close();
+    }
+}
+
+bool SessionManager::loadWordWrapEnabled() {
+    QFile file(getSettingsFilePath());
+    if (!file.open(QIODevice::ReadOnly)) {
+        return false;
+    }
+
+    QJsonObject root = QJsonDocument::fromJson(file.readAll()).object();
+    file.close();
+
+    return root["wordWrap"].toBool(false);
+}

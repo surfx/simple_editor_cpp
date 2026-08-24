@@ -22,8 +22,12 @@ public:
     static void saveSession(const QList<TabState>& tabs, int currentIndex, int width, int height);
     static bool loadSession(QList<TabState>& tabs, int& currentIndex, int& width, int& height);
 
+    static void saveWordWrapEnabled(bool enabled);
+    static bool loadWordWrapEnabled();
+
 private:
     static QString getSessionFilePath();
+    static QString getSettingsFilePath();
 };
 
 #endif // SESSIONMANAGER_H
