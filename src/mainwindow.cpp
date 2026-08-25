@@ -10,6 +10,7 @@
 #include <QLabel>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
+#include <QStatusBar>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -893,9 +894,7 @@ void MainWindow::doFindNext()
                                        index,
                                        true); // show
         
-        if (!found) {
-            // Not found message?
-        }
+        statusBar()->showMessage(found ? QString() : tr("Nenhuma ocorrência encontrada."), found ? 0 : 3000);
     }
 }
 
@@ -991,10 +990,14 @@ void MainWindow::doReplaceAll()
                                        false);
         
         if (found) {
+            // Group all replacements into a single undo step so Ctrl+Z reverts
+            // the whole "Replace All" instead of one match at a time.
+            editor->beginUndoAction();
             editor->replace(searchDialog->getReplaceText());
             while (editor->findNext()) {
                 editor->replace(searchDialog->getReplaceText());
             }
+            editor->endUndoAction();
         }
     }
 }

@@ -84,6 +84,14 @@ void CodeEditor::highlightSelections()
     SendScintilla(SCI_SETINDICATORCURRENT, 8);
     SendScintilla(SCI_INDICATORCLEARRANGE, 0, docLen);
 
+    // Skip the full-document scan on very large files: an O(n) search on every
+    // cursor move would noticeably lag typing/navigation.
+    const long kMaxDocLenForHighlight = 2 * 1024 * 1024; // 2 MB
+    if (docLen > kMaxDocLenForHighlight) {
+        isHighlighting = false;
+        return;
+    }
+
     if (hasSelectedText()) {
         QString selected = selectedText();
         // Only highlight if selection is a reasonable word/phrase
@@ -217,6 +225,10 @@ void CodeEditor::applyThemeToLexer(QsciLexer *l, const EditorTheme &theme)
 void CodeEditor::setLanguage(const QString &lang)
 {
     m_language = lang;
+    // Keep a handle to the previous lexer so it can be freed after being
+    // replaced; QsciScintilla::setLexer() does not delete the old one, which
+    // otherwise leaks a lexer object every time the language is switched.
+    QsciLexer *oldLexer = lexer();
     QsciLexer *l = nullptr;
     QString lcase = lang.toLower();
 
@@ -245,6 +257,10 @@ void CodeEditor::setLanguage(const QString &lang)
     }
 
     setLexer(l);
+
+    if (oldLexer && oldLexer != l) {
+        delete oldLexer;
+    }
 
     if (l) {
         setMarginWidth(2, 16);
@@ -333,6 +349,16 @@ void CodeEditor::unindentSelection()
 
 void CodeEditor::toggleComment()
 {
+    // Pick the line-comment token based on the current language so this works
+    // correctly for Python/Bash (#) and SQL (--), not just C-style languages.
+    QString lcase = m_language.toLower();
+    QString marker = "//";
+    if (lcase == "python" || lcase == "py" || lcase == "bash" || lcase == "sh") {
+        marker = "#";
+    } else if (lcase == "sql") {
+        marker = "--";
+    }
+
     int lineFrom, indexFrom, lineTo, indexTo;
     if (hasSelectedText()) {
         getSelection(&lineFrom, &indexFrom, &lineTo, &indexTo);
@@ -345,12 +371,12 @@ void CodeEditor::toggleComment()
     beginUndoAction();
     for (int line = lineFrom; line <= lineTo; ++line) {
         QString lineText = text(line);
-        if (lineText.trimmed().startsWith("//")) {
-            int commentPos = lineText.indexOf("//");
-            setSelection(line, commentPos, line, commentPos + 2);
+        if (lineText.trimmed().startsWith(marker)) {
+            int commentPos = lineText.indexOf(marker);
+            setSelection(line, commentPos, line, commentPos + marker.length());
             removeSelectedText();
         } else {
-            insertAt("//", line, 0);
+            insertAt(marker, line, 0);
         }
     }
     endUndoAction();
@@ -412,7 +438,6 @@ void CodeEditor::keyPressEvent(QKeyEvent *e)
 
             for (int i = 0; i < selections; ++i) {
                 int caret = SendScintilla(SCI_GETSELECTIONNCARET, i);
-                int anchor = SendScintilla(SCI_GETSELECTIONNANCHOR, i);
                 int newCaret = caret;
 
                 switch (e->key()) {
