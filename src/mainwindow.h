@@ -50,6 +50,7 @@ private slots:
     void reloadCurrentFile();
     void setLanguage(const QString &lang);
     void hideNotification();
+    void updateStatusBar();
 
     // Search and Replace
     void showFindDialog();
@@ -118,6 +119,12 @@ private:
     QLabel *notificationLabel;
     QPushButton *reloadButton;
     QMap<QString, bool> externallyModifiedFiles;
+
+    // Status Bar
+    QLabel *statusPositionLabel;
+    QLabel *statusLanguageLabel;
+    QLabel *statusEncodingLabel;
+    QLabel *statusModifiedLabel;
 };
 
 #endif // MAINWINDOW_H

@@ -3,6 +3,10 @@
 
 #include <Qsci/qsciscintilla.h>
 #include <Qsci/qscilexer.h>
+#include <QDragEnterEvent>
+#include <QDragMoveEvent>
+#include <QDropEvent>
+#include <QMimeData>
 #include "themedialog.h"
 
 class CodeEditor : public QsciScintilla
@@ -35,6 +39,9 @@ private slots:
 protected:
     void contextMenuEvent(QContextMenuEvent *event) override;
     void keyPressEvent(QKeyEvent *e) override;
+    void dragEnterEvent(QDragEnterEvent *event) override;
+    void dragMoveEvent(QDragMoveEvent *event) override;
+    void dropEvent(QDropEvent *event) override;
 
 private:
     void applyThemeToLexer(QsciLexer *lexer, const EditorTheme &theme);

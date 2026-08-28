@@ -74,6 +74,19 @@ MainWindow::MainWindow(QWidget *parent)
     connect(tabWidget, &QTabWidget::tabCloseRequested, this, &MainWindow::closeTab);
     connect(tabWidget, &QTabWidget::currentChanged, this, &MainWindow::onTabChanged);
 
+    // Status Bar
+    statusModifiedLabel = new QLabel(this);
+    statusEncodingLabel = new QLabel(tr("UTF-8"), this);
+    statusLanguageLabel = new QLabel(this);
+    statusPositionLabel = new QLabel(this);
+    for (QLabel *label : {statusModifiedLabel, statusLanguageLabel, statusEncodingLabel, statusPositionLabel}) {
+        label->setContentsMargins(6, 0, 6, 0);
+    }
+    statusBar()->addPermanentWidget(statusModifiedLabel);
+    statusBar()->addPermanentWidget(statusLanguageLabel);
+    statusBar()->addPermanentWidget(statusEncodingLabel);
+    statusBar()->addPermanentWidget(statusPositionLabel);
+
     createActions();
     createMenus();
     createToolBar();
@@ -342,6 +355,7 @@ void MainWindow::addEditorTab(const QString &filePath, const QString &content, b
             CodeEditor *editor = qobject_cast<CodeEditor*>(tabWidget->widget(i));
             if (editor && editor->property("filePath").toString() == absPath) {
                 tabWidget->setCurrentIndex(i);
+                editor->setFocus();
                 return;
             }
         }
@@ -397,7 +411,7 @@ void MainWindow::addEditorTab(const QString &filePath, const QString &content, b
 
     tabWidget->setTabToolTip(index, absPath);
     tabWidget->setCurrentIndex(index);
-
+    editor->setFocus();
 
     connect(editor, &CodeEditor::modificationChanged, [this, editor]() {
         // Find the index of this editor in case it moved
@@ -405,7 +419,18 @@ void MainWindow::addEditorTab(const QString &filePath, const QString &content, b
         if (idx != -1) {
             updateTabTitle(idx);
         }
+        if (editor == currentEditor()) {
+            updateStatusBar();
+        }
     });
+
+    connect(editor, &CodeEditor::cursorPositionChanged, [this, editor](int, int) {
+        if (editor == currentEditor()) {
+            updateStatusBar();
+        }
+    });
+
+    updateStatusBar();
 }
 
 void MainWindow::openFile()
@@ -570,6 +595,7 @@ void MainWindow::onTabChanged(int index)
             wordWrapAction->blockSignals(false);
         }
     }
+    updateStatusBar();
 }
 
 void MainWindow::toggleWordWrap(bool checked)
@@ -648,7 +674,36 @@ void MainWindow::setLanguage(const QString &lang)
     CodeEditor *editor = currentEditor();
     if (editor) {
         editor->setLanguage(lang);
+        updateStatusBar();
     }
+}
+
+void MainWindow::updateStatusBar()
+{
+    CodeEditor *editor = currentEditor();
+    if (!editor) {
+        statusPositionLabel->clear();
+        statusLanguageLabel->clear();
+        statusEncodingLabel->clear();
+        statusModifiedLabel->clear();
+        return;
+    }
+
+    int line = 0, index = 0;
+    editor->getCursorPosition(&line, &index);
+    statusPositionLabel->setText(tr("Ln %1, Col %2").arg(line + 1).arg(index + 1));
+
+    static const QMap<QString, QString> languageNames = {
+        {"cpp", "C/C++"}, {"html", "HTML"}, {"css", "CSS"},
+        {"javascript", "JavaScript"}, {"json", "JSON"}, {"python", "Python"},
+        {"xml", "XML"}, {"bash", "Bash"}, {"sql", "SQL"}
+    };
+    QString lang = editor->currentLanguage();
+    statusLanguageLabel->setText(languageNames.value(lang, tr("Texto Simples")));
+
+    statusEncodingLabel->setText(tr("UTF-8"));
+
+    statusModifiedLabel->setText(editor->isModified() ? tr("Modificado") : tr("Salvo"));
 }
 
 void MainWindow::createMenus()
@@ -706,10 +761,16 @@ void MainWindow::createMenus()
 
     // Language Menu
     QMenu *langMenu = menuBar()->addMenu(tr("&Linguagem"));
-    QStringList languages = {"Plain Text", "C++", "HTML", "CSS", "JavaScript", "JSON", "Python", "XML", "Bash", "SQL"};
-    for (const QString &lang : languages) {
-        langMenu->addAction(lang, [this, lang]() {
-            setLanguage(lang == "Plain Text" ? "" : lang);
+    QList<QPair<QString, QString>> languages = {
+        {"Plain Text", ""}, {"C/C++", "cpp"}, {"HTML", "html"}, {"CSS", "css"},
+        {"JavaScript", "javascript"}, {"JSON", "json"}, {"Python", "python"},
+        {"XML", "xml"}, {"Bash", "bash"}, {"SQL", "sql"}
+    };
+    for (const auto &lang : languages) {
+        QString display = lang.first;
+        QString value = lang.second;
+        langMenu->addAction(display, [this, value]() {
+            setLanguage(value);
         });
     }
 }

@@ -485,6 +485,35 @@ void CodeEditor::keyPressEvent(QKeyEvent *e)
     QsciScintilla::keyPressEvent(e);
 }
 
+void CodeEditor::dragEnterEvent(QDragEnterEvent *event)
+{
+    if (event->mimeData()->hasUrls()) {
+        // Let the drop bubble up to MainWindow so files can be opened as tabs,
+        // regardless of where over the editor the user drops them.
+        event->ignore();
+        return;
+    }
+    QsciScintilla::dragEnterEvent(event);
+}
+
+void CodeEditor::dragMoveEvent(QDragMoveEvent *event)
+{
+    if (event->mimeData()->hasUrls()) {
+        event->ignore();
+        return;
+    }
+    QsciScintilla::dragMoveEvent(event);
+}
+
+void CodeEditor::dropEvent(QDropEvent *event)
+{
+    if (event->mimeData()->hasUrls()) {
+        event->ignore();
+        return;
+    }
+    QsciScintilla::dropEvent(event);
+}
+
 void CodeEditor::contextMenuEvent(QContextMenuEvent *event)
 {
     QMenu *menu = new QMenu(this);
