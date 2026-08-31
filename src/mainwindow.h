@@ -15,6 +15,8 @@
 #include "searchdialog.h"
 #include "themedialog.h"
 
+class QMenu;
+
 class MainWindow : public QMainWindow
 {
     Q_OBJECT
@@ -51,6 +53,7 @@ private slots:
     void setLanguage(const QString &lang);
     void hideNotification();
     void updateStatusBar();
+    void updateRecentFilesMenu();
 
     // Search and Replace
     void showFindDialog();
@@ -76,6 +79,7 @@ private:
     CodeEditor* currentEditor() const;
     void loadSession();
     void saveSession();
+    void addToRecentClosedFiles(const QString &filePath);
 
     QTabWidget *tabWidget;
     QStack<TabState> closedTabsStack;
@@ -108,6 +112,13 @@ private:
     QAction *reopenAct;
     QAction *changeThemeAct;
     QAction *exitAct;
+
+    // Recently closed files
+    QMenu *fileMenu = nullptr;
+    QAction *recentFilesSeparatorTop = nullptr;
+    QAction *recentFilesSeparatorBottom = nullptr;
+    QList<QAction*> recentFileActions;
+    QStringList recentClosedFiles;
 
     SearchDialog *searchDialog = nullptr;
     int currentThemeIndex = 0;

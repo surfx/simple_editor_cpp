@@ -104,3 +104,36 @@ bool SessionManager::loadWordWrapEnabled() {
 
     return root["wordWrap"].toBool(false);
 }
+
+void SessionManager::saveRecentClosedFiles(const QStringList& files) {
+    QFile file(getSettingsFilePath());
+
+    QJsonObject root;
+    if (file.open(QIODevice::ReadOnly)) {
+        root = QJsonDocument::fromJson(file.readAll()).object();
+        file.close();
+    }
+
+    root["recentClosedFiles"] = QJsonArray::fromStringList(files);
+
+    if (file.open(QIODevice::WriteOnly)) {
+        file.write(QJsonDocument(root).toJson());
+        file.close();
+    }
+}
+
+QStringList SessionManager::loadRecentClosedFiles() {
+    QFile file(getSettingsFilePath());
+    if (!file.open(QIODevice::ReadOnly)) {
+        return QStringList();
+    }
+
+    QJsonObject root = QJsonDocument::fromJson(file.readAll()).object();
+    file.close();
+
+    QStringList result;
+    for (const QJsonValue &v : root["recentClosedFiles"].toArray()) {
+        result.append(v.toString());
+    }
+    return result;
+}

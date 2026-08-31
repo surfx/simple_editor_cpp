@@ -25,6 +25,9 @@ public:
     static void saveWordWrapEnabled(bool enabled);
     static bool loadWordWrapEnabled();
 
+    static void saveRecentClosedFiles(const QStringList& files);
+    static QStringList loadRecentClosedFiles();
+
 private:
     static QString getSessionFilePath();
     static QString getSettingsFilePath();

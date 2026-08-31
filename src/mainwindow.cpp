@@ -1,6 +1,8 @@
 #include "mainwindow.h"
 #include "sessionmanager.h"
 #include <QMenuBar>
+#include <QMenu>
+#include <QSet>
 #include <QFileDialog>
 #include <QMessageBox>
 #include <QFileInfo>
@@ -87,6 +89,8 @@ MainWindow::MainWindow(QWidget *parent)
     statusBar()->addPermanentWidget(statusEncodingLabel);
     statusBar()->addPermanentWidget(statusPositionLabel);
 
+    recentClosedFiles = SessionManager::loadRecentClosedFiles();
+
     createActions();
     createMenus();
     createToolBar();
@@ -110,8 +114,14 @@ MainWindow::MainWindow(QWidget *parent)
 
     // Setup Single Instance Server
     localServer = new QLocalServer(this);
-    QLocalServer::removeServer("SimpleEditorServer");
-    if (localServer->listen("SimpleEditorServer")) {
+    // Try to claim the server name first. Only remove a stale/orphaned socket
+    // file as a fallback, so we don't blindly kick out a legitimately running
+    // instance if two processes happen to start at nearly the same time.
+    if (!localServer->listen("SimpleEditorServer")) {
+        QLocalServer::removeServer("SimpleEditorServer");
+        localServer->listen("SimpleEditorServer");
+    }
+    if (localServer->isListening()) {
         connect(localServer, &QLocalServer::newConnection, this, &MainWindow::newLocalConnection);
     }
 }
@@ -527,6 +537,8 @@ void MainWindow::closeTab(int index)
         state.isModified = editor->isModified();
         state.unsavedContent = editor->text();
         closedTabsStack.push(state);
+
+        addToRecentClosedFiles(filePath);
     }
 
     tabWidget->removeTab(index);
@@ -540,6 +552,75 @@ void MainWindow::reopenLastTab()
     if (!closedTabsStack.isEmpty()) {
         TabState state = closedTabsStack.pop();
         addEditorTab(state.filePath, state.unsavedContent, state.isModified);
+    }
+}
+
+void MainWindow::addToRecentClosedFiles(const QString &filePath)
+{
+    if (filePath.isEmpty()) return;
+
+    // Reload from disk first: another running instance may have written
+    // entries since we last loaded, and we must not clobber them.
+    QStringList current = SessionManager::loadRecentClosedFiles();
+    current.removeAll(filePath);
+    current.prepend(filePath);
+    while (current.size() > 10) {
+        current.removeLast();
+    }
+
+    recentClosedFiles = current;
+    SessionManager::saveRecentClosedFiles(recentClosedFiles);
+}
+
+void MainWindow::updateRecentFilesMenu()
+{
+    // Reload from disk in case another running instance closed files too.
+    recentClosedFiles = SessionManager::loadRecentClosedFiles();
+
+    // Remove previously created actions
+    for (QAction *action : recentFileActions) {
+        fileMenu->removeAction(action);
+        action->deleteLater();
+    }
+    recentFileActions.clear();
+
+    // Determine which files are currently open in tabs
+    QSet<QString> openFiles;
+    for (int i = 0; i < tabWidget->count(); ++i) {
+        CodeEditor *editor = qobject_cast<CodeEditor*>(tabWidget->widget(i));
+        if (editor) {
+            QString path = editor->property("filePath").toString();
+            if (!path.isEmpty()) openFiles.insert(path);
+        }
+    }
+
+    // Prune files that are open, deleted, moved or otherwise inaccessible
+    QStringList validFiles;
+    for (const QString &path : recentClosedFiles) {
+        QFileInfo info(path);
+        if (openFiles.contains(path)) continue;
+        if (!info.exists() || !info.isFile() || !info.isReadable()) continue;
+        validFiles.append(path);
+        if (validFiles.size() >= 10) break;
+    }
+
+    if (validFiles.size() != recentClosedFiles.size()) {
+        recentClosedFiles = validFiles;
+        SessionManager::saveRecentClosedFiles(recentClosedFiles);
+    }
+
+    bool hasRecent = !validFiles.isEmpty();
+    recentFilesSeparatorTop->setVisible(hasRecent);
+    recentFilesSeparatorBottom->setVisible(hasRecent);
+
+    for (const QString &path : validFiles) {
+        QAction *action = new QAction(QFileInfo(path).fileName(), fileMenu);
+        action->setToolTip(path);
+        connect(action, &QAction::triggered, this, [this, path]() {
+            addEditorTab(path);
+        });
+        fileMenu->insertAction(recentFilesSeparatorBottom, action);
+        recentFileActions.append(action);
     }
 }
 
@@ -709,12 +790,19 @@ void MainWindow::updateStatusBar()
 void MainWindow::createMenus()
 {
     // File Menu
-    QMenu *fileMenu = menuBar()->addMenu(tr("&Arquivo"));
+    fileMenu = menuBar()->addMenu(tr("&Arquivo"));
     fileMenu->addAction(newAct);
     fileMenu->addAction(openAct);
     fileMenu->addAction(saveAct);
     fileMenu->addAction(saveAsAct);
-    
+
+    // Recently closed files section (populated dynamically on show)
+    recentFilesSeparatorTop = fileMenu->addSeparator();
+    recentFilesSeparatorBottom = fileMenu->addSeparator();
+    recentFilesSeparatorTop->setVisible(false);
+    recentFilesSeparatorBottom->setVisible(false);
+    connect(fileMenu, &QMenu::aboutToShow, this, &MainWindow::updateRecentFilesMenu);
+
     // Add reopen last tab to menu
     fileMenu->addSeparator();
     fileMenu->addAction(reopenAct);
