@@ -25,6 +25,9 @@ public:
     static void saveWordWrapEnabled(bool enabled);
     static bool loadWordWrapEnabled();
 
+    static void saveWindowOpacity(qreal opacity);
+    static qreal loadWindowOpacity();
+
     static void saveRecentClosedFiles(const QStringList& files);
     static QStringList loadRecentClosedFiles();
 

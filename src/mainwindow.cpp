@@ -1,5 +1,7 @@
 #include "mainwindow.h"
 #include "sessionmanager.h"
+#include "transparencydialog.h"
+#include <QGuiApplication>
 #include <QMenuBar>
 #include <QMenu>
 #include <QSet>
@@ -23,6 +25,17 @@
 #include <QDir>
 #include <QFile>
 #include <QStandardPaths>
+
+namespace {
+bool isKdeWaylandSession()
+{
+    static const bool result = []() {
+        return QGuiApplication::platformName().contains(QLatin1String("wayland"), Qt::CaseInsensitive)
+            && qEnvironmentVariable("XDG_CURRENT_DESKTOP").contains(QLatin1String("KDE"), Qt::CaseInsensitive);
+    }();
+    return result;
+}
+}
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -108,6 +121,15 @@ MainWindow::MainWindow(QWidget *parent)
     // Restore global word wrap preference
     wordWrapAction->setChecked(SessionManager::loadWordWrapEnabled());
 
+    // Restore window transparency preference. The actual opacity is applied
+    // after the window is shown, once the compositor knows the window.
+    windowOpacity = SessionManager::loadWindowOpacity();
+
+    transparencyTimer = new QTimer(this);
+    transparencyTimer->setSingleShot(true);
+    transparencyTimer->setInterval(120);
+    connect(transparencyTimer, &QTimer::timeout, this, &MainWindow::applyTransparency);
+
     resize(800, 600);
     loadSession();
 
@@ -121,6 +143,11 @@ MainWindow::MainWindow(QWidget *parent)
     
     // Forçamos a janela a nunca abrir maximizada
     showNormal();
+
+    // Apply the saved transparency only after the window has been mapped.
+    QTimer::singleShot(300, this, [this]() {
+        applyWindowOpacity(windowOpacity);
+    });
 
     // Setup Single Instance Server
     localServer = new QLocalServer(this);
@@ -465,6 +492,9 @@ void MainWindow::createActions()
 
     changeThemeAct = new QAction(tr("&Temas..."), this);
     connect(changeThemeAct, &QAction::triggered, this, &MainWindow::showThemeDialog);
+
+    transparencyAct = new QAction(tr("&Transparência..."), this);
+    connect(transparencyAct, &QAction::triggered, this, &MainWindow::showTransparencyDialog);
 
     wordWrapAction = new QAction(QIcon::fromTheme("text-wrap"), tr("Quebra de Linha"), this);
     wordWrapAction->setCheckable(true);
@@ -852,6 +882,13 @@ CodeEditor* MainWindow::currentEditor() const
 
 void MainWindow::closeEvent(QCloseEvent *event)
 {
+    // Make sure a transparency change made just before closing is persisted
+    // even if the debounce timer has not fired yet.
+    if (transparencyTimer && transparencyTimer->isActive()) {
+        transparencyTimer->stop();
+        SessionManager::saveWindowOpacity(windowOpacity);
+    }
+
     saveSession();
     event->accept();
 }
@@ -986,6 +1023,9 @@ void MainWindow::createMenus()
     
     editMenu->addAction(indentAct);
     editMenu->addAction(unindentAct);
+    editMenu->addSeparator();
+
+    editMenu->addAction(transparencyAct);
 
     // Search Menu
     QMenu *searchMenu = menuBar()->addMenu(tr("&Pesquisa"));
@@ -1039,6 +1079,108 @@ void MainWindow::applyTheme(int index)
             editor->setTheme(theme);
         }
     }
+}
+
+void MainWindow::showTransparencyDialog()
+{
+    const int percent = qRound((1.0 - windowOpacity) * 100.0);
+    TransparencyDialog *dialog = new TransparencyDialog(percent, this);
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+
+    connect(dialog, &TransparencyDialog::transparencyChanged, this, &MainWindow::setTransparencyPercent);
+
+    dialog->show();
+    dialog->raise();
+    dialog->activateWindow();
+}
+
+void MainWindow::setTransparencyPercent(int percent)
+{
+    // The dialog never goes above 90%, but clamp here as well.
+    percent = qBound(0, percent, 90);
+    windowOpacity = 1.0 - (percent / 100.0);
+
+    // Coalesce the many valueChanged signals emitted while dragging the slider.
+    transparencyTimer->start();
+}
+
+void MainWindow::applyTransparency()
+{
+    applyWindowOpacity(windowOpacity);
+    SessionManager::saveWindowOpacity(windowOpacity);
+}
+
+void MainWindow::applyWindowOpacity(qreal opacity)
+{
+    if (QGuiApplication::platformName().contains(QLatin1String("wayland"), Qt::CaseInsensitive)) {
+        // Qt's Wayland platform plugin has no window-opacity support, so on
+        // Plasma the value is applied through KWin's scripting API instead.
+        if (isKdeWaylandSession()) {
+            applyOpacityViaKWin(opacity);
+        }
+        return;
+    }
+
+    setWindowOpacity(opacity);
+}
+
+void MainWindow::applyOpacityViaKWin(qreal opacity)
+{
+    const QDBusConnection bus = QDBusConnection::sessionBus();
+    if (!bus.isConnected()) {
+        return;
+    }
+
+    static int scriptCounter = 0;
+    const QString pluginName = QStringLiteral("simple-editor-opacity-%1").arg(++scriptCounter);
+    const QString scriptPath = QDir(QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation))
+                                   .filePath(pluginName + QStringLiteral(".js"));
+
+    QFile scriptFile(scriptPath);
+    if (!scriptFile.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        return;
+    }
+    scriptFile.write(QStringLiteral(R"JS(
+(function () {
+    const opacity = %1;
+    const windows = workspace.windowList ? workspace.windowList() : workspace.clientList();
+    for (const window of windows) {
+        const desktopFile = String(window.desktopFileName || '');
+        const resourceClass = String(window.resourceClass || '').toLowerCase();
+        const caption = String(window.caption || '');
+        if (desktopFile !== 'SimpleEditor' && resourceClass.indexOf('simpleeditor') === -1)
+            continue;
+        // Only the main window: dialogs stay opaque so the setting can always
+        // be changed back, even at the maximum transparency.
+        if (caption.indexOf('Simple C++ Editor') === -1)
+            continue;
+        window.opacity = opacity;
+    }
+})();
+)JS").arg(QString::number(opacity, 'f', 3)).toUtf8());
+    scriptFile.close();
+
+    const QString service = QStringLiteral("org.kde.KWin");
+    const QString path = QStringLiteral("/Scripting");
+    const QString iface = QStringLiteral("org.kde.kwin.Scripting");
+
+    QDBusMessage load = QDBusMessage::createMethodCall(service, path, iface, QStringLiteral("loadScript"));
+    load << scriptPath << pluginName;
+    const QDBusMessage loadReply = bus.call(load, QDBus::Block, 250);
+
+    if (loadReply.type() == QDBusMessage::ErrorMessage) {
+        QFile::remove(scriptPath);
+        return;
+    }
+
+    bus.call(QDBusMessage::createMethodCall(service, path, iface, QStringLiteral("start")),
+             QDBus::Block, 250);
+
+    QDBusMessage unload = QDBusMessage::createMethodCall(service, path, iface, QStringLiteral("unloadScript"));
+    unload << pluginName;
+    bus.call(unload, QDBus::Block, 250);
+
+    QFile::remove(scriptPath);
 }
 
 void MainWindow::handleFileChanged(const QString &path)

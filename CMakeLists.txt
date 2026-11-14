@@ -34,11 +34,13 @@ add_executable(SimpleEditor
     src/sessionmanager.cpp
     src/searchdialog.cpp
     src/themedialog.cpp
+    src/transparencydialog.cpp
     src/mainwindow.h
     src/codeeditor.h
     src/sessionmanager.h
     src/searchdialog.h
     src/themedialog.h
+    src/transparencydialog.h
 )
 
 target_link_libraries(SimpleEditor PRIVATE Qt6::Widgets Qt6::Core Qt6::Gui Qt6::Network Qt6::DBus ${QSCINTILLA_LIB})

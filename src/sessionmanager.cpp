@@ -148,6 +148,37 @@ bool SessionManager::loadWordWrapEnabled() {
     return root["wordWrap"].toBool(false);
 }
 
+void SessionManager::saveWindowOpacity(qreal opacity) {
+    QFile file(getSettingsFilePath());
+
+    QJsonObject root;
+    if (file.open(QIODevice::ReadOnly)) {
+        root = QJsonDocument::fromJson(file.readAll()).object();
+        file.close();
+    }
+
+    root["windowOpacity"] = opacity;
+
+    if (file.open(QIODevice::WriteOnly)) {
+        file.write(QJsonDocument(root).toJson());
+        file.close();
+    }
+}
+
+qreal SessionManager::loadWindowOpacity() {
+    QFile file(getSettingsFilePath());
+    if (!file.open(QIODevice::ReadOnly)) {
+        return 1.0;
+    }
+
+    QJsonObject root = QJsonDocument::fromJson(file.readAll()).object();
+    file.close();
+
+    // Never restore a value that would make the window invisible: the menu
+    // could not be reached anymore to raise the opacity again.
+    return qBound<qreal>(0.1, root["windowOpacity"].toDouble(1.0), 1.0);
+}
+
 void SessionManager::saveRecentClosedFiles(const QStringList& files) {
     QFile file(getSettingsFilePath());
 

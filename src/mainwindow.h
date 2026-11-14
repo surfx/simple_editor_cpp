@@ -16,6 +16,8 @@
 #include "themedialog.h"
 
 class QMenu;
+class QTimer;
+class TransparencyDialog;
 
 class MainWindow : public QMainWindow
 {
@@ -47,6 +49,9 @@ private slots:
     void toggleWordWrap(bool checked);
     void showThemeDialog();
     void applyTheme(int index);
+    void showTransparencyDialog();
+    void setTransparencyPercent(int percent);
+    void applyTransparency();
     void handleFileChanged(const QString &path);
     void reloadCurrentFile();
     void setLanguage(const QString &lang);
@@ -82,6 +87,8 @@ private:
     void handleClientMessage(const QByteArray &payload);
     void activateFromExternalRequest(const QString &activationToken);
     void activateWindowOnKdeWayland();
+    void applyWindowOpacity(qreal opacity);
+    void applyOpacityViaKWin(qreal opacity);
 
     QTabWidget *tabWidget;
     QStack<TabState> closedTabsStack;
@@ -113,6 +120,7 @@ private:
     QAction *findPrevAct;
     QAction *reopenAct;
     QAction *changeThemeAct;
+    QAction *transparencyAct;
     QAction *exitAct;
 
     // Recently closed files
@@ -126,6 +134,11 @@ private:
     int currentThemeIndex = 0;
     int normalWidth = 800;
     int normalHeight = 600;
+
+    // Window transparency (only the main window; dialogs stay opaque so the
+    // setting can always be changed back).
+    qreal windowOpacity = 1.0;
+    QTimer *transparencyTimer = nullptr;
 
     // Notification Bar
     QWidget *notificationBar;

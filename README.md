@@ -21,6 +21,7 @@ Um editor de texto leve e funcional inspirado no Notepad++, desenvolvido em C++ 
 - **Interface e Temas:**
     - **Destaque de Sintaxe:** Suporte completo para C++ e linguagens comuns via Scintilla.
     - **Temas Customizáveis:** Interface baseada no tema *Tokyo Night* com suporte a troca de temas via diálogo.
+    - **Transparência Ajustável:** Menu **Editar → Transparência** abre um controle deslizante para deixar a janela translúcida. O nível escolhido é lembrado entre as execuções.
     - **Interface Minimalista:** Barra de ferramentas otimizada para produtividade.
 - **Integração com o Sistema:**
     - **Instância Única:** Se você tentar abrir um novo arquivo e o editor já estiver rodando, ele abrirá o arquivo em uma nova aba na janela existente.
