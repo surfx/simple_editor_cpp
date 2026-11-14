@@ -66,3 +66,9 @@ Para integrar o editor ao seu ambiente desktop (ícones e menu "Abrir com"):
 ```bash
 sudo ./scripts/install.sh
 ```
+
+Após instalar, você pode abrir arquivos diretamente pelo terminal:
+
+```bash
+editor arquivo.txt
+```

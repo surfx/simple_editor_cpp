@@ -22,19 +22,22 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-# 2. Instala o binário
+# 2. Instala o binário e o atalho curto em /usr/local/bin
 echo "Instalando binário em /usr/local/bin..."
-cp "$PROJECT_ROOT/build/SimpleEditor" /usr/local/bin/
+cp "$PROJECT_ROOT/build/SimpleEditor" /usr/local/bin/SimpleEditor
+chmod +x /usr/local/bin/SimpleEditor
+
+# Cria um comando curto 'editor' apontando para o SimpleEditor
+ln -sf /usr/local/bin/SimpleEditor /usr/local/bin/editor
 
 # 3. Instala o arquivo .desktop
 echo "Instalando entrada de menu em /usr/share/applications..."
 cp "$PROJECT_ROOT/SimpleEditor.desktop" /usr/share/applications/
 
-# 4. Atualiza banco de dados de MIME e desktop (opcional mas recomendado)
+# 4. Atualiza banco de dados de MIME e desktop
 update-desktop-database /usr/share/applications/ 2>/dev/null
 
 echo "--------------------------------------------------"
 echo "Instalação concluída com sucesso!"
-echo "Agora você pode encontrar o 'Simple Editor' no seu menu de aplicativos"
-echo "ou clicar com o botão direito em um arquivo e escolher 'Abrir com...'."
+echo "Use 'SimpleEditor' ou 'editor arquivo.txt' no terminal."
 echo "--------------------------------------------------"

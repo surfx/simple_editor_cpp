@@ -46,10 +46,16 @@ int main(int argc, char *argv[])
     
     // Process initial command line arguments
     QStringList args = a.arguments();
-    for (int i = 1; i < args.size(); ++i) {
-        QString filePath = QFileInfo(args[i]).absoluteFilePath();
-        w.addEditorTab(filePath);
+    if (args.size() > 1) {
+        // Se o usuário passou arquivos no terminal (ex: editor arquivo.txt)
+        for (int i = 1; i < args.size(); ++i) {
+            QString filePath = QFileInfo(args[i]).absoluteFilePath();
+            w.addEditorTab(filePath);
+        }
+    } else {
+        // Se abriu apenas "editor", garante que a sessão salva será carregada corretamente
+        // (Caso o loadSession na MainWindow já faça isso no construtor, garanta que não haja conflito)
     }
-    
+
     return a.exec();
 }
