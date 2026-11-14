@@ -24,6 +24,7 @@ Um editor de texto leve e funcional inspirado no Notepad++, desenvolvido em C++ 
     - **Interface Minimalista:** Barra de ferramentas otimizada para produtividade.
 - **Integração com o Sistema:**
     - **Instância Única:** Se você tentar abrir um novo arquivo e o editor já estiver rodando, ele abrirá o arquivo em uma nova aba na janela existente.
+    - **Foco Automático:** Ao usar "Abrir com" no gerenciador de arquivos, a janela existente já recebe o foco (usa o token *xdg-activation* do Wayland, com fallback para o Plasma).
     - **Drag and Drop:** Suporte para arrastar arquivos do gerenciador de pastas diretamente para o editor.
 
 ## Atalhos Úteis
@@ -72,3 +73,9 @@ Após instalar, você pode abrir arquivos diretamente pelo terminal:
 ```bash
 editor arquivo.txt
 ```
+
+> **Dica (ícone na barra de tarefas):** fixe o aplicativo pelo menu de
+> aplicativos (**Simple Editor** → botão direito → *Fixar na barra*), e não o
+> executável. Um atalho fixado a partir do arquivo (`file:///usr/local/bin/editor`)
+> aparece como `?` quando o editor está fechado, pois não aponta para a entrada
+> `.desktop` do aplicativo.

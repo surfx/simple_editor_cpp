@@ -1,6 +1,48 @@
 #include "sessionmanager.h"
+#include <QFileInfo>
+
+namespace {
+// Versões anteriores derivavam o nome do aplicativo (e portanto o diretório de
+// configuração) do executável usado, então quem abria pelo atalho "editor"
+// gravava em ~/.config/editor. Agora o nome do aplicativo é fixo, então
+// migramos esses arquivos na primeira execução, mantendo sempre o mais novo.
+void migrateLegacyConfig()
+{
+    static bool alreadyChecked = false;
+    if (alreadyChecked) {
+        return;
+    }
+    alreadyChecked = true;
+
+    const QString currentDir = QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation);
+    const QString legacyDir = QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation)
+                              + QStringLiteral("/editor");
+
+    if (QDir::cleanPath(legacyDir) == QDir::cleanPath(currentDir)) {
+        return;
+    }
+
+    for (const QString &fileName : {QStringLiteral("session.json"), QStringLiteral("settings.json")}) {
+        const QString legacyFile = QDir(legacyDir).filePath(fileName);
+        if (!QFileInfo::exists(legacyFile)) {
+            continue;
+        }
+
+        const QString currentFile = QDir(currentDir).filePath(fileName);
+        const QFileInfo currentInfo(currentFile);
+        if (currentInfo.exists() && currentInfo.lastModified() >= QFileInfo(legacyFile).lastModified()) {
+            continue;
+        }
+
+        QDir().mkpath(currentDir);
+        QFile::remove(currentFile);
+        QFile::copy(legacyFile, currentFile);
+    }
+}
+}
 
 QString SessionManager::getSessionFilePath() {
+    migrateLegacyConfig();
     QString path = QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation);
     QDir dir(path);
     if (!dir.exists()) {
@@ -68,6 +110,7 @@ bool SessionManager::loadSession(QList<TabState>& tabs, int& currentIndex, int& 
 }
 
 QString SessionManager::getSettingsFilePath() {
+    migrateLegacyConfig();
     QString path = QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation);
     QDir dir(path);
     if (!dir.exists()) {

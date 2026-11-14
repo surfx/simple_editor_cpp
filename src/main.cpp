@@ -1,12 +1,42 @@
 #include <QApplication>
-#include <QtNetwork/QLocalSocket>
 #include <QFileInfo>
+#include <QIcon>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QStringList>
+#include <QtNetwork/QLocalSocket>
 #include "mainwindow.h"
+
+namespace {
+const char *kServerName = "SimpleEditorServer";
+
+// Monta o pedido enviado para a instância já em execução. Além dos arquivos,
+// envia o token de ativação do Wayland (xdg-activation) herdado do lançador
+// (Dolphin, por exemplo). É esse token que permite que o compositor entregue
+// o foco para a janela existente quando o usuário escolhe "Abrir com".
+QByteArray buildOpenRequest(const QStringList &files)
+{
+    QJsonObject request;
+    request.insert(QStringLiteral("files"), QJsonArray::fromStringList(files));
+    request.insert(QStringLiteral("activationToken"),
+                   QString::fromUtf8(qgetenv("XDG_ACTIVATION_TOKEN")));
+    return QJsonDocument(request).toJson(QJsonDocument::Compact) + '\n';
+}
+}
 
 int main(int argc, char *argv[])
 {
     QApplication a(argc, argv);
-    
+
+    // Identidade fixa do aplicativo: o app_id no Wayland (e o WM_CLASS no X11)
+    // passa a ser sempre "SimpleEditor", independentemente do nome usado para
+    // chamar o binário (SimpleEditor, editor, ...). Isso é o que faz o
+    // gerenciador de tarefas casar a janela com SimpleEditor.desktop.
+    QCoreApplication::setApplicationName(QStringLiteral("SimpleEditor"));
+    QGuiApplication::setDesktopFileName(QStringLiteral("SimpleEditor"));
+    QApplication::setWindowIcon(QIcon::fromTheme(QStringLiteral("text-x-generic")));
+
     // Theme Application (Tokyo Night)
     a.setStyleSheet(
         "QMainWindow, QDialog { background-color: #1a1b26; color: #c0caf5; }"
@@ -26,35 +56,33 @@ int main(int argc, char *argv[])
         "QLineEdit, QComboBox { background-color: #24283b; color: #c0caf5; border: 1px solid #2f3549; padding: 4px; border-radius: 3px; }"
     );
 
+    // Arquivos passados na linha de comando (ex: "editor arquivo.txt")
+    QStringList files;
+    const QStringList args = a.arguments();
+    for (int i = 1; i < args.size(); ++i) {
+        if (!args[i].isEmpty() && !args[i].startsWith(QLatin1Char('-'))) {
+            files << QFileInfo(args[i]).absoluteFilePath();
+        }
+    }
+
     // Check if another instance is running
     QLocalSocket socket;
-    socket.connectToServer("SimpleEditorServer");
+    socket.connectToServer(kServerName);
     if (socket.waitForConnected(500)) {
-        // Another instance is running. Send file paths and exit.
-        QStringList args = a.arguments();
-        for (int i = 1; i < args.size(); ++i) {
-            QString filePath = QFileInfo(args[i]).absoluteFilePath();
-            socket.write(filePath.toUtf8());
-            socket.waitForBytesWritten(500);
-        }
+        // Another instance is running. Hand the files over and exit.
+        socket.write(buildOpenRequest(files));
+        socket.waitForBytesWritten(1000);
+        socket.disconnectFromServer();
         return 0;
     }
 
     // No other instance running. Start as normal.
     MainWindow w;
     w.show();
-    
+
     // Process initial command line arguments
-    QStringList args = a.arguments();
-    if (args.size() > 1) {
-        // Se o usuário passou arquivos no terminal (ex: editor arquivo.txt)
-        for (int i = 1; i < args.size(); ++i) {
-            QString filePath = QFileInfo(args[i]).absoluteFilePath();
-            w.addEditorTab(filePath);
-        }
-    } else {
-        // Se abriu apenas "editor", garante que a sessão salva será carregada corretamente
-        // (Caso o loadSession na MainWindow já faça isso no construtor, garanta que não haja conflito)
+    for (const QString &filePath : files) {
+        w.addEditorTab(filePath);
     }
 
     return a.exec();

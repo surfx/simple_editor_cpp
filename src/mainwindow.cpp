@@ -13,6 +13,16 @@
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QStatusBar>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QTimer>
+#include <QWindow>
+#include <QDBusConnection>
+#include <QDBusMessage>
+#include <QDir>
+#include <QFile>
+#include <QStandardPaths>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -133,25 +143,168 @@ MainWindow::~MainWindow()
 void MainWindow::newLocalConnection()
 {
     QLocalSocket *socket = localServer->nextPendingConnection();
-    if (socket) {
-        connect(socket, &QLocalSocket::readyRead, [this, socket]() {
-            QString message = QString::fromUtf8(socket->readAll());
-            handleMessage(message);
-            socket->disconnectFromServer();
-        });
+    if (!socket) {
+        return;
     }
+
+    // Cada cliente envia uma ou mais linhas JSON (uma por pedido). Acumulamos
+    // os bytes até ter uma linha completa, pois o socket é um fluxo e o
+    // readyRead pode entregar pedaços parciais da mensagem.
+    QByteArray *buffer = new QByteArray;
+
+    connect(socket, &QLocalSocket::readyRead, this, [this, socket, buffer]() {
+        buffer->append(socket->readAll());
+
+        int newline;
+        while ((newline = buffer->indexOf('\n')) >= 0) {
+            const QByteArray payload = buffer->left(newline);
+            buffer->remove(0, newline + 1);
+            if (!payload.trimmed().isEmpty()) {
+                handleClientMessage(payload);
+            }
+        }
+    });
+
+    connect(socket, &QLocalSocket::disconnected, this, [this, socket, buffer]() {
+        // Compatibilidade com versões antigas, que enviavam o caminho sem quebra de linha.
+        if (!buffer->trimmed().isEmpty()) {
+            handleClientMessage(*buffer);
+        }
+        delete buffer;
+        socket->deleteLater();
+    });
 }
 
-void MainWindow::handleMessage(const QString &message)
+void MainWindow::handleClientMessage(const QByteArray &payload)
 {
-    if (!message.isEmpty()) {
-        addEditorTab(message);
+    QStringList files;
+    QString activationToken;
+
+    QJsonParseError error{};
+    const QJsonDocument document = QJsonDocument::fromJson(payload, &error);
+
+    if (error.error == QJsonParseError::NoError && document.isObject()) {
+        const QJsonObject request = document.object();
+        const QJsonArray fileArray = request.value(QStringLiteral("files")).toArray();
+        for (const QJsonValue &value : fileArray) {
+            if (value.isString()) {
+                files << value.toString();
+            }
+        }
+        activationToken = request.value(QStringLiteral("activationToken")).toString();
+    } else {
+        // Cliente antigo: o payload é o próprio caminho do arquivo.
+        const QString legacyPath = QString::fromUtf8(payload);
+        if (!legacyPath.isEmpty()) {
+            files << legacyPath;
+        }
     }
-    
-    // Bring window to front
-    showNormal();
+
+    for (const QString &filePath : files) {
+        addEditorTab(filePath);
+    }
+
+    activateFromExternalRequest(activationToken);
+}
+
+void MainWindow::activateFromExternalRequest(const QString &activationToken)
+{
+    // Restaura a janela se estiver minimizada, sem perder o estado de maximizada.
+    if (isMinimized()) {
+        setWindowState((windowState() & ~Qt::WindowMinimized) | Qt::WindowActive);
+    }
+    show();
     raise();
+
+    // No Wayland quem decide o foco é o compositor. O token xdg-activation
+    // recebido da instância secundária (herdado do lançador, ex.: Dolphin) é a
+    // forma suportada de pedir o foco para esta janela. O Qt lê a variável
+    // abaixo no momento do requestActivate().
+    if (!activationToken.isEmpty()) {
+        qputenv("XDG_ACTIVATION_TOKEN", activationToken.toUtf8());
+        if (QWindow *window = windowHandle()) {
+            window->requestActivate();
+        }
+        qunsetenv("XDG_ACTIVATION_TOKEN");
+    }
+
     activateWindow();
+
+    // Se o compositor ainda não deu o foco (por exemplo, quando não veio token
+    // do lançador), pede a ativação diretamente ao KWin. Só roda no Plasma/Wayland.
+    QTimer::singleShot(150, this, [this]() {
+        if (!isActiveWindow()) {
+            activateWindowOnKdeWayland();
+        }
+    });
+}
+
+void MainWindow::activateWindowOnKdeWayland()
+{
+    static const bool kdeWayland = []() {
+        return qEnvironmentVariable("XDG_SESSION_TYPE") == QLatin1String("wayland")
+            && qEnvironmentVariable("XDG_CURRENT_DESKTOP").contains(QLatin1String("KDE"), Qt::CaseInsensitive);
+    }();
+
+    if (!kdeWayland) {
+        return;
+    }
+
+    const QDBusConnection bus = QDBusConnection::sessionBus();
+    if (!bus.isConnected()) {
+        return;
+    }
+
+    // O token xdg-activation é o caminho padrão, mas nem todo lançador o envia
+    // (ex.: abrir pelo terminal). Nesse caso usamos a interface de scripting do
+    // KWin, que também é quem decide qual janela recebe o foco no Wayland.
+    static int scriptCounter = 0;
+    const QString pluginName = QStringLiteral("simple-editor-activate-%1").arg(++scriptCounter);
+    const QString scriptPath = QDir(QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation))
+                                   .filePath(pluginName + QStringLiteral(".js"));
+
+    QFile scriptFile(scriptPath);
+    if (!scriptFile.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        return;
+    }
+    scriptFile.write(R"JS(
+(function () {
+    const windows = workspace.windowList ? workspace.windowList() : workspace.clientList();
+    for (const window of windows) {
+        if (String(window.resourceClass).toLowerCase().indexOf('simpleeditor') === -1)
+            continue;
+        if (window.minimized)
+            window.minimized = false;
+        workspace.activeWindow = window;
+        break;
+    }
+})();
+)JS");
+    scriptFile.close();
+
+    const QString service = QStringLiteral("org.kde.KWin");
+    const QString path = QStringLiteral("/Scripting");
+    const QString iface = QStringLiteral("org.kde.kwin.Scripting");
+
+    QDBusMessage load = QDBusMessage::createMethodCall(service, path, iface, QStringLiteral("loadScript"));
+    load << scriptPath << pluginName;
+    const QDBusMessage loadReply = bus.call(load, QDBus::Block, 250);
+
+    if (loadReply.type() == QDBusMessage::ErrorMessage) {
+        QFile::remove(scriptPath);
+        return;
+    }
+
+    // "start" executa os scripts carregados de forma síncrona, então já é
+    // seguro descarregar o script logo em seguida.
+    bus.call(QDBusMessage::createMethodCall(service, path, iface, QStringLiteral("start")),
+             QDBus::Block, 250);
+
+    QDBusMessage unload = QDBusMessage::createMethodCall(service, path, iface, QStringLiteral("unloadScript"));
+    unload << pluginName;
+    bus.call(unload, QDBus::Block, 250);
+
+    QFile::remove(scriptPath);
 }
 
 void MainWindow::resizeEvent(QResizeEvent *event)

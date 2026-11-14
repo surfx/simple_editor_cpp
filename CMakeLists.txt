@@ -19,7 +19,7 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Widgets Core Gui Network)
+find_package(Qt6 REQUIRED COMPONENTS Widgets Core Gui Network DBus)
 
 # Find QScintilla
 find_library(QSCINTILLA_LIB NAMES qscintilla2_qt6)
@@ -41,7 +41,7 @@ add_executable(SimpleEditor
     src/themedialog.h
 )
 
-target_link_libraries(SimpleEditor PRIVATE Qt6::Widgets Qt6::Core Qt6::Gui Qt6::Network ${QSCINTILLA_LIB})
+target_link_libraries(SimpleEditor PRIVATE Qt6::Widgets Qt6::Core Qt6::Gui Qt6::Network Qt6::DBus ${QSCINTILLA_LIB})
 
 # Set output directory for scripts to find
 set_target_properties(SimpleEditor PROPERTIES

@@ -27,7 +27,6 @@ public:
 
 public slots:
     void addEditorTab(const QString &filePath = QString(), const QString &content = QString(), bool isModified = false, const QString &language = QString());
-    void handleMessage(const QString &message);
 
 protected:
     void closeEvent(QCloseEvent *event) override;
@@ -80,6 +79,9 @@ private:
     void loadSession();
     void saveSession();
     void addToRecentClosedFiles(const QString &filePath);
+    void handleClientMessage(const QByteArray &payload);
+    void activateFromExternalRequest(const QString &activationToken);
+    void activateWindowOnKdeWayland();
 
     QTabWidget *tabWidget;
     QStack<TabState> closedTabsStack;
