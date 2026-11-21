@@ -490,6 +490,17 @@ void MainWindow::createActions()
     reopenAct->setShortcutContext(Qt::WindowShortcut);
     connect(reopenAct, &QAction::triggered, this, &MainWindow::reopenLastTab);
 
+    // Close Tab Action (Ctrl+W)
+    closeTabAct = new QAction(tr("Fechar Aba"), this);
+    closeTabAct->setShortcut(QKeySequence::Close);
+    closeTabAct->setShortcutContext(Qt::WindowShortcut);
+    connect(closeTabAct, &QAction::triggered, this, [this]() {
+        int currentIndex = tabWidget->currentIndex();
+        if (currentIndex != -1) {
+            closeTab(currentIndex);
+        }
+    });
+
     changeThemeAct = new QAction(tr("&Temas..."), this);
     connect(changeThemeAct, &QAction::triggered, this, &MainWindow::showThemeDialog);
 
@@ -924,15 +935,19 @@ void MainWindow::loadSession()
     int currentIndex = 0;
     int w = 800;
     int h = 600;
-    
+
     if (SessionManager::loadSession(states, currentIndex, w, h)) {
         for (const auto& state : states) {
+            // Skip tabs for files that were moved/deleted/renamed AND have no unsaved content
+            if (!state.filePath.isEmpty() && !QFile::exists(state.filePath) && state.unsavedContent.isEmpty() && !state.isModified) {
+                continue;
+            }
             addEditorTab(state.filePath, state.unsavedContent, state.isModified, state.language);
         }
         if (currentIndex >= 0 && currentIndex < tabWidget->count()) {
             tabWidget->setCurrentIndex(currentIndex);
         }
-        
+
         // Restore size with minimum constraints
         this->normalWidth = qMax(300, w);
         this->normalHeight = qMax(300, h);
@@ -985,6 +1000,8 @@ void MainWindow::createMenus()
     fileMenu->addAction(openAct);
     fileMenu->addAction(saveAct);
     fileMenu->addAction(saveAsAct);
+    fileMenu->addSeparator();
+    fileMenu->addAction(closeTabAct);
 
     // Recently closed files section (populated dynamically on show)
     recentFilesSeparatorTop = fileMenu->addSeparator();

@@ -119,6 +119,7 @@ private:
     QAction *findNextAct;
     QAction *findPrevAct;
     QAction *reopenAct;
+    QAction *closeTabAct;
     QAction *changeThemeAct;
     QAction *transparencyAct;
     QAction *exitAct;
